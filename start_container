@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# variables
+CONTAINER=team-$1
+IMAGE=ubuntu-daily:xenial
+PROFILES=default
+RUN_USER=$1
+RUN_USER_UID=1444
+CONTAINER_ROOT_UID=$(cat /etc/subgid | grep lxd | cut -d : -f 2)
+
+function wait_bar() {
+  for i in {1..10}
+  do
+    printf '= %.0s' {1..$i}
+    sleep $1s
+  done
+}
+
+# create the container if it doesn't exist
+if [[ ! -e /var/lib/lxd/containers/$CONTAINER ]]
+  then
+    lxc init $IMAGE $CONTAINER
+    wait_bar 0.5
+    lxc config device add $CONTAINER eth0 nic nictype=macvlan name=eth0 parent=ens3 vlan=$1
+    wait_bar 0.5
+    lxc start $CONTAINER
+    wait_bar 0.5
+    echo container $CONTAINER started
+  else
+    echo container $CONTAINER already created and started
+    exit 0
+fi
+
+# apply profiles
+lxc profile apply $CONTAINER $PROFILES
+
+# delete ubuntu user
+if  [[ ! -z $(lxc exec $CONTAINER -- getent passwd | grep ubuntu) ]]
+then
+  lxc exec $CONTAINER -- userdel -r ubuntu
+fi
+
+# create running user
+if [[ -z "$(lxc exec $CONTAINER -- getent passwd | grep $RUN_USER)" ]]
+then
+  lxc exec $CONTAINER -- useradd -u $RUN_USER_UID -s /usr/sbin/nologin $RUN_USER
+fi
