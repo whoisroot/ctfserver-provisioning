@@ -4,9 +4,6 @@
 CONTAINER=team-$1
 IMAGE=ubuntu-daily:xenial
 PROFILES=default
-RUN_USER=$1
-RUN_USER_UID=1444
-CONTAINER_ROOT_UID=$(cat /etc/subgid | grep lxd | cut -d : -f 2)
 
 function wait_bar() {
   for i in {1..10}
