@@ -4,29 +4,41 @@ import json
 import os_client_config
 #import paramiko
 
+
+CTF_network = "teste_net"
 chall_IPs = {}
+size_teams = 0
+size_ready = 0
+
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
     chall_server = json.load(f)
-for server_name, server_data in enumerate(chall_server):
-    chall_IPs[server_name] = server_data["id"]
+for server in chall_server:
+    #print("name ",server, chall_server[server]["id"])
+    chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][1]["addr"]
+print(chall_IPs)
 while 1:
+    new_event = False
     with open("chall_ready.json") as f:
         chall_ready = json.load(f)
+    if len(chall_ready) > size_ready:
+        new_event= True
+        size_ready = len(chall_ready)
+
     with open("chall_teams.json") as f:
         chall_teams = json.load(f)
+    if len(chall_teams) > size_teams:
+        new_event = True
+        size_teams = len(chall_teams)
  
-    new_team = False
-
-    for chall_name in chall_ready:
-        server = conn.compute.get_server(chall_server[chall_name]["id"])
-        if server.status != "ACTIVE" and new_team:
-            conn.compute.start_server(server)
-            print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
-        elif new_team:
-            print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
-
-        for team_id, team_data in enumerate(chall_teams):
-            if chall_name in team_data["solved"] and team_solve:
-                print("ssh ip_chall -c stop_container ",team_id, " deu certo? ", chall_name)
+    if new_event:
+        for chall_name in chall_ready:
+            server = conn.compute.get_server(chall_server[chall_name]["id"])
+            if server.status != "ACTIVE": 
+                conn.compute.start_server(server)
+            for team_id, team_data in enumerate(chall_teams):
+                if chall_name in team_data["solved"]:
+                    print("ssh ip_chall -c stop_container ",team_id, " deu certo? ", chall_name)
+                else:
+                    print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
 #        print(chall_name+": ",server.addresses["teste_net"][1]["addr"])
