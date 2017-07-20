@@ -1,4 +1,4 @@
 {
-	"chall1": {"id":"df4fa119-9934-4d3b-9586-10cd8878a262","state":"SHUTOFF"}, 
-	"chall2": {"id":"7a1aa745-0391-4e77-a512-d175c0627f2f","state":"SHUTOFF"}
+	"chall1": {"id":"df4fa119-9934-4d3b-9586-10cd8878a262","in_use":true}, 
+	"chall2": {"id":"7a1aa745-0391-4e77-a512-d175c0627f2f","in_use":true}
 }

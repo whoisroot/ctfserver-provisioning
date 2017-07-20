@@ -2,7 +2,8 @@
 
 import json
 import os_client_config
-#import paramiko
+import paramiko
+import time
 
 
 CTF_network = "teste_net"
@@ -10,35 +11,56 @@ chall_IPs = {}
 size_teams = 0
 size_ready = 0
 
+async def main():
+    while 1:
+        new_event = False
+        with open("chall_ready.json") as f:
+            chall_ready = json.load(f)
+        print(chall_ready)
+        if len(chall_ready) > size_ready:
+            new_event= True
+            size_ready = len(chall_ready)
+        with open("chall_teams.json") as f:
+            chall_teams = json.load(f)
+        print(len(chall_teams))
+        print(chall_teams)
+        if len(chall_teams) > size_teams:
+            new_event = True
+            size_teams = len(chall_teams)
+ 
+        if new_event:
+            for chall_name in chall_ready:
+                vm_ip = chall_IPs["chall_name"]
+                vm_id = chall_server[chall_name]["id"] 
+                if chall_server[chall_name]["in_use"]:
+                    server = conn.compute.get_server(vm_id)
+                    if server.status != "ACTIVE":
+                        conn.compute.start_server(server)
+                        print("Ligou!")
+                for team_id, team_data in enumerate(chall_teams):
+                    if chall_name in team_data["solved"]:
+                        print("ssh ip_chall -c stop_container ",team_id, " deu certo? ", chall_name)
+                    else:
+                        asyncio.ensure_future(start_container(vm_id, vm_ip, team_id))
+                        print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
+
+async def start_container(vm_id, vm_ip, team_id):
+    while server.status != "ACTIVE":
+        server = conn.compute.get_server(vm_id)
+        time.sleep(3)
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.connect(vm_ip, 22, "ubuntu")
+    stdin, stdout, stderr = client.exec("start_container",team_id)
+    client.close()
+    print(stdout)
+
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
     chall_server = json.load(f)
 for server in chall_server:
-    #print("name ",server, chall_server[server]["id"])
     chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][1]["addr"]
 print(chall_IPs)
-while 1:
-    new_event = False
-    with open("chall_ready.json") as f:
-        chall_ready = json.load(f)
-    if len(chall_ready) > size_ready:
-        new_event= True
-        size_ready = len(chall_ready)
-
-    with open("chall_teams.json") as f:
-        chall_teams = json.load(f)
-    if len(chall_teams) > size_teams:
-        new_event = True
-        size_teams = len(chall_teams)
- 
-    if new_event:
-        for chall_name in chall_ready:
-            server = conn.compute.get_server(chall_server[chall_name]["id"])
-            if server.status != "ACTIVE": 
-                conn.compute.start_server(server)
-            for team_id, team_data in enumerate(chall_teams):
-                if chall_name in team_data["solved"]:
-                    print("ssh ip_chall -c stop_container ",team_id, " deu certo? ", chall_name)
-                else:
-                    print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
-#        print(chall_name+": ",server.addresses["teste_net"][1]["addr"])
+loop = asyncio.get_event_loop()
+asyncio.async(main())
+loop.run_forever()
