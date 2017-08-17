@@ -4,57 +4,73 @@ import json
 import os_client_config
 import paramiko
 import time
+import asyncio
 
-
+# Name of the network on OpenStack used for the CTF
 CTF_network = "teste_net"
-chall_IPs = {}
-size_teams = 0
-size_ready = 0
 
-async def main():
+async def main_loop(chall_IPs, teams, size_ready, solves):
+    print("STARTING SCRIPT\n")
     while 1:
         new_event = False
         with open("chall_ready.json") as f:
             chall_ready = json.load(f)
-        print(chall_ready)
         if len(chall_ready) > size_ready:
             new_event= True
             size_ready = len(chall_ready)
         with open("chall_teams.json") as f:
             chall_teams = json.load(f)
-        print(len(chall_teams))
-        print(chall_teams)
-        if len(chall_teams) > size_teams:
+        if len(chall_teams) > teams:
             new_event = True
-            size_teams = len(chall_teams)
+            teams = len(chall_teams)
+        solves_temp = 0
+        for team_id, team_data in enumerate(chall_teams):
+            solves_temp += len(team_data["solved"])
+        if solves_temp > solves:
+            new_event = True
+            solves = solves_temp
  
         if new_event:
+            print("new event")
             for chall_name in chall_ready:
-                vm_ip = chall_IPs["chall_name"]
+                vm_ip = chall_IPs[chall_name]
                 vm_id = chall_server[chall_name]["id"] 
                 if chall_server[chall_name]["in_use"]:
                     server = conn.compute.get_server(vm_id)
                     if server.status != "ACTIVE":
                         conn.compute.start_server(server)
-                        print("Ligou!")
                 for team_id, team_data in enumerate(chall_teams):
                     if chall_name in team_data["solved"]:
-                        print("ssh ip_chall -c stop_container ",team_id, " deu certo? ", chall_name)
+                        asyncio.ensure_future(stop_container(server, vm_id, vm_ip, team_id))
                     else:
-                        asyncio.ensure_future(start_container(vm_id, vm_ip, team_id))
-                        print("ssh ip_chall -c start_container &",team_id, " deu certo? ", chall_name)
+                        asyncio.ensure_future(start_container(server, vm_id, vm_ip, team_id))
+        await asyncio.sleep(120)
 
-async def start_container(vm_id, vm_ip, team_id):
+async def start_container(server, vm_id, vm_ip, team_id):
     while server.status != "ACTIVE":
         server = conn.compute.get_server(vm_id)
         time.sleep(3)
     client = paramiko.SSHClient()
     client.load_system_host_keys()
-    client.connect(vm_ip, 22, "ubuntu")
-    stdin, stdout, stderr = client.exec("start_container",team_id)
+    client.connect(vm_ip, 22, "ubuntu") #IP, port, username
+    stdin, stdout, stderr = client.exec_command("./start_container "+str(team_id))
+    for line in stdout:
+        print('... ' + line.strip('\n'))
     client.close()
-    print(stdout)
 
+async def stop_container(server, vm_id, vm_ip, team_id):
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.connect(vm_ip, 22, "ubuntu") #IP, port, username
+    stdin, stdout, stderr = client.exec_command("./stop_container "+str(team_id))
+    for line in stdout:
+        print('... ' + line.strip('\n'))
+    client.close()
+
+chall_IPs = {}
+teams = 0
+size_ready = 0
+solves = 0
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
     chall_server = json.load(f)
@@ -62,5 +78,5 @@ for server in chall_server:
     chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][1]["addr"]
 print(chall_IPs)
 loop = asyncio.get_event_loop()
-asyncio.async(main())
+asyncio.async(main_loop(chall_IPs, teams, size_ready, solves))
 loop.run_forever()
