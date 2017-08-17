@@ -2,31 +2,17 @@
 
 # variables
 CONTAINER=team-$1
-IMAGE=ubuntu-daily:xenial
+IMAGE=chall
 PROFILES=default
-
-function wait_bar() {
-  for i in {1..10}
-  do
-    printf '= %.0s' {1..$i}
-    sleep $1s
-  done
-}
 
 # create the container if it doesn't exist
 if [[ ! -e /var/lib/lxd/containers/$CONTAINER ]]
   then
-    lxc init $IMAGE $CONTAINER
-    wait_bar 0.5
-    lxc config device add $CONTAINER eth0 nic nictype=macvlan name=eth0 parent=ens3 vlan=$1
-    wait_bar 0.5
-    lxc start $CONTAINER
-    wait_bar 0.5
+    lxc init $IMAGE $CONTAINER &> /dev/null 
+    lxc config device add $CONTAINER eth0 nic nictype=macvlan name=eth0 parent=ens3 vlan=$1 &> /dev/null 
+    lxc start $CONTAINER &> /dev/null 
     echo container $CONTAINER started
   else
     echo container $CONTAINER already created and started
-    exit 0
 fi
-
-# apply profiles
-lxc profile apply $CONTAINER $PROFILES
+exit 0

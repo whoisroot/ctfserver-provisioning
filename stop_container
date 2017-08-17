@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# variables
+CONTAINER=team-$1
+IMAGE=chall
+PROFILES=default
+
+# create the container if it doesn't exist
+if [[ -e /var/lib/lxd/containers/$CONTAINER ]]
+  then
+    lxc delete $CONTAINER --force &> /dev/null
+    echo container $CONTAINER stoped and destroyed
+  else
+    echo container $CONTAINER does not exist 
+fi
+exit 0
