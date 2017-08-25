@@ -3,53 +3,50 @@
 import json
 import os_client_config
 import paramiko
+import os
 import time
 import asyncio
 
-# Name of the network on OpenStack used for the CTF
-CTF_network = "teste_net"
+CTF_network = "teste_net" # Name of the network on OpenStack used for the CTF
+NIZKCTF_PATH = "/PATH/TO/NIZKCTF/" # Path to the NIZKCTF repository
+VPN_VM_IP = ""
 
-async def main_loop(chall_IPs, teams, size_ready, solves):
+async def main_loop(chall_IPs):
     print("STARTING SCRIPT\n")
     while 1:
-        new_event = False
+        solve = False
+        new_team = False
+        new_chall = False
+
         with open("chall_ready.json") as f:
             chall_ready = json.load(f)
         if len(chall_ready) > size_ready:
-            new_event= True
+            new_chall = True
             size_ready = len(chall_ready)
         with open("chall_teams.json") as f:
             chall_teams = json.load(f)
-        if len(chall_teams) > teams:
-            new_event = True
-            teams = len(chall_teams)
-        solves_temp = 0
-        for team_id, team_data in enumerate(chall_teams):
-            solves_temp += len(team_data["solved"])
-        if solves_temp > solves:
-            new_event = True
-            solves = solves_temp
+        chall_teams, new_team, solve = update_score(NIZKCTF_PATH, chall_teams)
  
-        if new_event:
+        if new_team or new_chall or solve:
             print("new event")
             for chall_name in chall_ready:
                 vm_ip = chall_IPs[chall_name]
                 vm_id = chall_server[chall_name]["id"] 
-                if chall_server[chall_name]["in_use"]:
-                    server = conn.compute.get_server(vm_id)
-                    if server.status != "ACTIVE":
-                        conn.compute.start_server(server)
-                for team_id, team_data in enumerate(chall_teams):
-                    if chall_name in team_data["solved"]:
-                        asyncio.ensure_future(stop_container(server, vm_id, vm_ip, team_id))
-                    else:
+
+                if solve:
+                    for team_id, team_data in enumerate(chall_teams):
+                        if chall_name in team_data["solved"]:
+                            asyncio.ensure_future(stop_container(server, vm_ip, team_id))
+                if new_team or new_chall:
+                    for team_id, team_data in enumerate(chall_teams):
                         asyncio.ensure_future(start_container(server, vm_id, vm_ip, team_id))
         await asyncio.sleep(120)
 
 async def start_container(server, vm_id, vm_ip, team_id):
     while server.status != "ACTIVE":
+        conn.compute.start_server(server)
+        await asyncio.sleep(1)
         server = conn.compute.get_server(vm_id)
-        time.sleep(3)
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.connect(vm_ip, 22, "ubuntu") #IP, port, username
@@ -58,7 +55,7 @@ async def start_container(server, vm_id, vm_ip, team_id):
         print('... ' + line.strip('\n'))
     client.close()
 
-async def stop_container(server, vm_id, vm_ip, team_id):
+async def stop_container(vm_ip, team_id):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.connect(vm_ip, 22, "ubuntu") #IP, port, username
@@ -67,10 +64,39 @@ async def stop_container(server, vm_id, vm_ip, team_id):
         print('... ' + line.strip('\n'))
     client.close()
 
+def update_score(path, chall_teams):
+    with open(path+"/submissions/accepted-submissions.json") as f:
+       accepted_submissions = json.load(f)
+    with open("chall_teams.json") as f:
+       chall_teams = json.load(f)
+
+    size = len(chall_teams)
+    solve = False
+    new_team = False
+
+    for team in accepted_submissions["standings"]:
+        team_id = -1
+        for i in range(0, size):
+            if team["team"] == chall_teams[i]["name"]:
+                team_id = i
+                break
+        if team_id < 0:
+            chall_teams.append({"name": team["team"], "solved": []})
+            for challenge in team['taskStats']:
+                chall_teams[size]["solved"].append(challenge)
+            size += 1
+            new_team = True
+        else:
+            for challenge in team['taskStats']:
+                if challenge not in chall_teams[team_id]["solved"]:
+                    chall_teams[team_id]["solved"].append(challenge)
+                    solve = True
+    with open("chall_teams.json", 'w') as f:
+        json.dump(chall_teams, f)
+
+    return chall_teams, new_team, solve
+
 chall_IPs = {}
-teams = 0
-size_ready = 0
-solves = 0
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
     chall_server = json.load(f)
@@ -78,5 +104,5 @@ for server in chall_server:
     chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][1]["addr"]
 print(chall_IPs)
 loop = asyncio.get_event_loop()
-asyncio.async(main_loop(chall_IPs, teams, size_ready, solves))
+asyncio.async(main_loop(chall_IPs))
 loop.run_forever()

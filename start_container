@@ -3,7 +3,6 @@
 # variables
 CONTAINER=team-$1
 IMAGE=chall
-PROFILES=default
 
 # create the container if it doesn't exist
 if [[ ! -e /var/lib/lxd/containers/$CONTAINER ]]
