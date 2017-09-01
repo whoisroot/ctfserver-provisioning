@@ -8,10 +8,12 @@ import time
 import asyncio
 
 CTF_network = "teste_net" # Name of the network on OpenStack used for the CTF
+IP_type = 2 # 0 for internal network, 1 for IPv6, 2 for floating IP
 NIZKCTF_PATH = "/PATH/TO/NIZKCTF/" # Path to the NIZKCTF repository
 VPN_VM_IP = ""
 
 async def main_loop(chall_IPs):
+    size_ready = 0
     print("STARTING SCRIPT\n")
     while 1:
         solve = False
@@ -31,21 +33,27 @@ async def main_loop(chall_IPs):
             print("new event")
             for chall_name in chall_ready:
                 vm_ip = chall_IPs[chall_name]
-                vm_id = chall_server[chall_name]["id"] 
+                vm_id = chall_server[chall_name]["id"]
 
                 if solve:
                     for team_id, team_data in enumerate(chall_teams):
                         if chall_name in team_data["solved"]:
-                            asyncio.ensure_future(stop_container(server, vm_ip, team_id))
+                            asyncio.ensure_future(stop_container(vm_ip, team_id))
                 if new_team or new_chall:
+                    server = conn.compute.get_server(vm_id)
                     for team_id, team_data in enumerate(chall_teams):
                         asyncio.ensure_future(start_container(server, vm_id, vm_ip, team_id))
         await asyncio.sleep(120)
+        for chall_name in chall_ready:
+                vm_ip = chall_IPs[chall_name]
+                vm_id = chall_server[chall_name]["id"]
+                asyncio.ensure_future(idle_vm_shutoff(vm_ip, vm_id))
+        await asyncio.sleep(60)
 
 async def start_container(server, vm_id, vm_ip, team_id):
     while server.status != "ACTIVE":
         conn.compute.start_server(server)
-        await asyncio.sleep(1)
+        await asyncio.sleep(3)
         server = conn.compute.get_server(vm_id)
     client = paramiko.SSHClient()
     client.load_system_host_keys()
@@ -96,12 +104,25 @@ def update_score(path, chall_teams):
 
     return chall_teams, new_team, solve
 
+async def idle_vm_shutoff(vm_ip, vm_id):
+    server = conn.compute.get_server(vm_id)
+    if server.status == "ACTIVE":
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        client.connect(vm_ip, 22, "ubuntu") #IP, port, username
+        stdin, stdout, stderr = client.exec_command("lxc list | grep RUNNING | wc -l")
+        for line in stdout:
+            containers = int(line.strip('\n'))
+
+        if containers == 0:
+            conn.compute.stop_server(server)
+
 chall_IPs = {}
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
     chall_server = json.load(f)
 for server in chall_server:
-    chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][1]["addr"]
+    chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][IP_type]["addr"]
 print(chall_IPs)
 loop = asyncio.get_event_loop()
 asyncio.async(main_loop(chall_IPs))
