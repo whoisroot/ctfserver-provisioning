@@ -10,7 +10,7 @@ import asyncio
 CTF_network = "teste_net" # Name of the network on OpenStack used for the CTF
 IP_type = 2 # 0 for internal network, 1 for IPv6, 2 for floating IP
 NIZKCTF_PATH = "/PATH/TO/NIZKCTF/" # Path to the NIZKCTF repository
-VPN_VM_IP = ""
+VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containers
 
 async def main_loop(chall_IPs):
     size_ready = 0
@@ -19,18 +19,17 @@ async def main_loop(chall_IPs):
         solve = False
         new_team = False
         new_chall = False
+        chall_teams = []
 
         with open("chall_ready.json") as f:
             chall_ready = json.load(f)
         if len(chall_ready) > size_ready:
             new_chall = True
             size_ready = len(chall_ready)
-        with open("chall_teams.json") as f:
-            chall_teams = json.load(f)
-        chall_teams, new_team, solve = update_score(NIZKCTF_PATH, chall_teams)
+
+        chall_teams, new_team, solve = update_score(NIZKCTF_PATH) # Checks for new teams and solves on scoreboard
  
         if new_team or new_chall or solve:
-            print("new event")
             for chall_name in chall_ready:
                 vm_ip = chall_IPs[chall_name]
                 vm_id = chall_server[chall_name]["id"]
@@ -47,10 +46,11 @@ async def main_loop(chall_IPs):
         for chall_name in chall_ready:
                 vm_ip = chall_IPs[chall_name]
                 vm_id = chall_server[chall_name]["id"]
-                asyncio.ensure_future(idle_vm_shutoff(vm_ip, vm_id))
+                asyncio.ensure_future(idle_vm_shutoff(vm_ip, vm_id)) # Check all VMs to test if there are containers running, shut them down if not
         await asyncio.sleep(60)
 
 async def start_container(server, vm_id, vm_ip, team_id):
+    # Test if VM is already running, start it if negative
     while server.status != "ACTIVE":
         conn.compute.start_server(server)
         await asyncio.sleep(3)
@@ -58,7 +58,7 @@ async def start_container(server, vm_id, vm_ip, team_id):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.connect(vm_ip, 22, "ubuntu") #IP, port, username
-    stdin, stdout, stderr = client.exec_command("./start_container "+str(team_id))
+    stdin, stdout, stderr = client.exec_command("./start_container "+str(team_id)) # Start the container for the specified team
     for line in stdout:
         print('... ' + line.strip('\n'))
     client.close()
@@ -67,16 +67,16 @@ async def stop_container(vm_ip, team_id):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.connect(vm_ip, 22, "ubuntu") #IP, port, username
-    stdin, stdout, stderr = client.exec_command("./stop_container "+str(team_id))
+    stdin, stdout, stderr = client.exec_command("./stop_container "+str(team_id)) # Stops the container for the specified team
     for line in stdout:
         print('... ' + line.strip('\n'))
     client.close()
 
-def update_score(path, chall_teams):
+def update_score(path):
     with open(path+"/submissions/accepted-submissions.json") as f:
-       accepted_submissions = json.load(f)
+       accepted_submissions = json.load(f) # Polls the scoreboard
     with open("chall_teams.json") as f:
-       chall_teams = json.load(f)
+       chall_teams = json.load(f) # Current teams being provisioned
 
     size = len(chall_teams)
     solve = False
@@ -85,35 +85,40 @@ def update_score(path, chall_teams):
     for team in accepted_submissions["standings"]:
         team_id = -1
         for i in range(0, size):
+            # Checks if team already being provisioned and their ID
             if team["team"] == chall_teams[i]["name"]:
                 team_id = i
                 break
+        # New team, add them to the end of the file containing teams
         if team_id < 0:
             chall_teams.append({"name": team["team"], "solved": []})
+            # Add all solved challenges to the team solves
             for challenge in team['taskStats']:
                 chall_teams[size]["solved"].append(challenge)
             size += 1
             new_team = True
         else:
             for challenge in team['taskStats']:
+                # Checks for newly solved challenges and add the to the team solves
                 if challenge not in chall_teams[team_id]["solved"]:
                     chall_teams[team_id]["solved"].append(challenge)
                     solve = True
     with open("chall_teams.json", 'w') as f:
-        json.dump(chall_teams, f)
-
+        json.dump(chall_teams, f) # Saves the final result
     return chall_teams, new_team, solve
 
 async def idle_vm_shutoff(vm_ip, vm_id):
     server = conn.compute.get_server(vm_id)
+    # Can only shutdown active servers
     if server.status == "ACTIVE":
         client = paramiko.SSHClient()
         client.load_system_host_keys()
         client.connect(vm_ip, 22, "ubuntu") #IP, port, username
-        stdin, stdout, stderr = client.exec_command("lxc list | grep RUNNING | wc -l")
+        stdin, stdout, stderr = client.exec_command("lxc list | grep RUNNING | wc -l") # Get number of running containers
         for line in stdout:
             containers = int(line.strip('\n'))
 
+        # Shutdown VM if not in use
         if containers == 0:
             conn.compute.stop_server(server)
 
@@ -123,7 +128,8 @@ with open("chall_servers.json") as f:
     chall_server = json.load(f)
 for server in chall_server:
     chall_IPs[server] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][IP_type]["addr"]
-print(chall_IPs)
+print("Challege VMs IPs:\n")
+print(chall_IPs,"\n\n")
 loop = asyncio.get_event_loop()
 asyncio.async(main_loop(chall_IPs))
 loop.run_forever()
