@@ -14,12 +14,14 @@ VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containe
 
 async def main_loop(chall_IPs):
     size_ready = 0
+    teams_playing = 0
     print("STARTING SCRIPT\n")
     while 1:
-        solve = False
+        solves_list = []
+        teams_list = []
         new_team = False
         new_chall = False
-        chall_teams = []
+        new_solves = False
 
         with open("chall_ready.json") as f:
             chall_ready = json.load(f)
@@ -27,26 +29,42 @@ async def main_loop(chall_IPs):
             new_chall = True
             size_ready = len(chall_ready)
 
-        chall_teams, new_team, solve = update_score(NIZKCTF_PATH) # Checks for new teams and solves on scoreboard
- 
-        if new_team or new_chall or solve:
-            for chall_name in chall_ready:
-                vm_ip = chall_IPs[chall_name]
-                vm_id = chall_server[chall_name]["id"]
+"""TODO: make a new challs_list tuples list variable to store challs' names, IPs and states(on, off, unknown) and store it's contents in a .json file"""
 
-                if solve:
-                    for team_id, team_data in enumerate(chall_teams):
-                        if chall_name in team_data["solved"]:
-                            asyncio.ensure_future(stop_container(vm_ip, team_id))
-                if new_team or new_chall:
-                    server = conn.compute.get_server(vm_id)
-                    for team_id, team_data in enumerate(chall_teams):
+        new_team, new_teams_list, new_solves, solves_list = update_score(NIZKCTF_PATH) # Checks for new teams and solves on scoreboard
+
+        if new_team or new_chall or new_solves:
+            # If there are new solves, stop the containers in the solves list
+            if new_solves:
+                for challenge in solves_list:
+                    for team in challenge:
+                        asyncio.ensure_future(stop_container(chall_IPs[challenge], team))
+
+            # If there are new teams, start a container in every challenge VM for each new team
+            if new_team:
+                server = conn.compute.get_server(vm_id)
+                for chall_name in chall_ready:
+                    vm_ip = chall_IPs[chall_name]
+                    vm_id = chall_server[chall_name]["id"]
+                    for team_id in teams_list:
                         asyncio.ensure_future(start_container(server, vm_id, vm_ip, team_id))
+                teams_playing += len(teams_list)
+
+            # If there are new challenges, start a container for every team playing in the new VM
+            """TODO: after creating the new challs_list variable, finish implementing this routine"""
+           """ if new_chall:
+                server = conn.compute.get_server()
+                for team in range(0, teams_playing - 1):
+                    asyncio.ensure_future(start_container(server,))"""
+
+
         await asyncio.sleep(120)
+
         for chall_name in chall_ready:
                 vm_ip = chall_IPs[chall_name]
                 vm_id = chall_server[chall_name]["id"]
                 asyncio.ensure_future(idle_vm_shutoff(vm_ip, vm_id)) # Check all VMs to test if there are containers running, shut them down if not
+
         await asyncio.sleep(60)
 
 async def start_container(server, vm_id, vm_ip, team_id):
@@ -72,15 +90,19 @@ async def stop_container(vm_ip, team_id):
         print('... ' + line.strip('\n'))
     client.close()
 
-def update_score(path):
+def update_score(path, minSolves):
     with open(path+"/submissions/accepted-submissions.json") as f:
        accepted_submissions = json.load(f) # Polls the scoreboard
+    with open("chall_ready.json") as f:
+       chall_ready= json.load(f) # Challenges being provisioned
     with open("chall_teams.json") as f:
        chall_teams = json.load(f) # Current teams being provisioned
 
     size = len(chall_teams)
     solve = False
     new_team = False
+    new_teams_list = []
+    solves_list = []
 
     for team in accepted_submissions["standings"]:
         team_id = -1
@@ -90,22 +112,22 @@ def update_score(path):
                 team_id = i
                 break
         # New team, add them to the end of the file containing teams
-        if team_id < 0:
+        if team_id < 0 and len(team["taskStats"]) >= minSolves:
             chall_teams.append({"name": team["team"], "solved": []})
-            # Add all solved challenges to the team solves
-            for challenge in team['taskStats']:
-                chall_teams[size]["solved"].append(challenge)
-            size += 1
             new_team = True
+            new_teams_list.append(size)
+            size += 1
         else:
             for challenge in team['taskStats']:
                 # Checks for newly solved challenges and add the to the team solves
-                if challenge not in chall_teams[team_id]["solved"]:
-                    chall_teams[team_id]["solved"].append(challenge)
-                    solve = True
+                if challenge in chall_ready:
+                    if challenge not in chall_teams[team_id]["solved"]:
+                        chall_teams[team_id]["solved"].append(challenge)
+                        solve = True
+                        solves_list[challenge].append(team_id)
     with open("chall_teams.json", 'w') as f:
         json.dump(chall_teams, f) # Saves the final result
-    return chall_teams, new_team, solve
+    return new_team, new_teams_list, new_solves, solves_list
 
 async def idle_vm_shutoff(vm_ip, vm_id):
     server = conn.compute.get_server(vm_id)
@@ -122,6 +144,7 @@ async def idle_vm_shutoff(vm_ip, vm_id):
         if containers == 0:
             conn.compute.stop_server(server)
 
+"""TODO: if the challs_list is created, this part might need changes and maybe will become a new routine in the loop"""
 chall_IPs = {}
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
