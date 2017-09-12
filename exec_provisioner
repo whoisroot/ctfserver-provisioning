@@ -14,7 +14,7 @@ NIZKCTF_PATH = "/PATH/TO/NIZKCTF/" # Path to the NIZKCTF repository
 VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containers
 min_solves = 1 # Minimum number of solves required for team to be provisioned
 
-async def main_loop(chall_IPs):
+async def main_loop(chall_server):
     size_ready = 0
     teams_playing = 0
     print("STARTING SCRIPT\n")
@@ -158,15 +158,14 @@ async def idle_vm_shutoff(server):
 async def vm_start(server):
     if server["power_state"] == "off":
         vm = conn.compute.get_server(server["id"])
-        while vm.status == "SHUTOFF"
+        while vm.status == "SHUTOFF":
             conn.compute.start_server(server["id"])
             sleep(3)
             vm = conn.compute.get_server(server["id"])
         server["power_state"] = "on"
-     else:
+    else:
         pass
 
-"""TODO: if the challs_list is created, this part might need changes and maybe will become a new routine in the loop"""
 chall_IPs = {}
 conn = os_client_config.make_sdk()
 with open("chall_servers.json") as f:
