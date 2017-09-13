@@ -10,7 +10,7 @@ from pwgen import pwgen
 
 CTF_network = "teste_net" # Name of the network on OpenStack used for the CTF
 IP_type = 2 # 0 for internal network, 1 for IPv6, 2 for floating IP
-NIZKCTF_PATH = "/PATH/TO/NIZKCTF/" # Path to the NIZKCTF repository
+NIZKCTF_PATH = "" # Path to the NIZKCTF repository
 VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containers
 min_solves = 1 # Minimum number of solves required for team to be provisioned
 
@@ -107,6 +107,8 @@ async def stop_container(server, team_id):
 def update_score(path, minSolves, chall_ready):
     with open(path+"/submissions/accepted-submissions.json") as f:
        accepted_submissions = json.load(f) # Polls the scoreboard
+    if len(accepted_submissions) == 0:
+        return False, [], False, [], []
     with open("chall_teams.json") as f:
        chall_teams = json.load(f) # Current teams being provisioned
 
@@ -172,9 +174,9 @@ with open("chall_servers.json") as f:
     chall_server = json.load(f)
     for server in chall_server:
         chall_server[server]["IP"] = conn.compute.get_server(chall_server[server]["id"]).addresses[CTF_network][IP_type]["addr"]
-    json.dump(chall_server, f)
+    #json.dump(chall_server, f)
 print("Challege VMs IPs:\n")
-print(chall_IPs,"\n\n")
+print(chall_server,"\n\n")
 loop = asyncio.get_event_loop()
 asyncio.async(main_loop(chall_server))
 loop.run_forever()
