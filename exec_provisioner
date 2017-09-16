@@ -186,7 +186,7 @@ with open("chall_servers.json") as f:
             else:
                 print('VM "'+chall+'" IN UNKNOWN STATE, PLEASE CHECK OPENSTACK')
     json.dump(chall_server, f)
-print("Challege VMs IPs:\n")
+print("Challenge VMs IPs:\n")
 print(chall_server,"\n\n")
 loop = asyncio.get_event_loop()
 asyncio.async(main_loop(chall_server))
