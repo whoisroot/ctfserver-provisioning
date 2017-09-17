@@ -315,7 +315,7 @@ def compute_target_state(openstack_servers, released_challs):
         if len(solved_challs) >= MIN_SOLVES:
             container_name = get_container_from_team_name(team_name)
             active_challs = released_challs - solved_challs
-            active_challs += {VPN_ID,}  # the VPN containers are always on
+            active_challs.add(VPN_ID)  # the VPN containers are always on
             for chall in active_challs:
                 for vm_uuid in openstack_servers[chall]:
                     containers[vm_uuid].add(container_name)
