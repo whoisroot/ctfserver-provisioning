@@ -108,6 +108,9 @@ def handle_container_transition(openstack_servers, vm_state,
     vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
     vpn_vm_uuids = set(openstack_servers[VPN_ID])
 
+    logging.info('Current state: %r', container_state)
+    logging.info('Target state: %r', target_state)
+
     # Handle starting VPN if needed
     for vm_uuid in vpn_vm_uuids:
         for container in target_state[vm_uuid]:
@@ -135,8 +138,6 @@ def handle_container_transition(openstack_servers, vm_state,
         if vm_uuid in vpn_vm_uuids:
             continue
         if container not in target_state[vm_uuid]:
-            logging.info('Container %r not in %r',
-                         container, target_state[vm_uuid])
             team_id = get_team_id_from_container_name(container)
             pending.append(executor.submit(stop_container,
                                            vm_uuid,
