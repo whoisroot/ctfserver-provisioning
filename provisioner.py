@@ -10,6 +10,7 @@ import logging
 import requests
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from subprocess import Popen
+from collections import namedtuple
 from pwgen import pwgen
 
 logging.basicConfig(level=logging.INFO)
@@ -38,13 +39,7 @@ RELEASED_CHALLS = "released_challs.json"
 VPN_ID = "_vpn"  # VPN server name in OPENSTACK_SERVERS json file
 
 
-class VMState:
-    def __init__(self, status, addr, extaddr=None):
-        self.status = status
-        self.addr = addr
-        self.extaddr = extaddr
-    def __repr__(self):
-        return '<VMState(%r, %r, %r)>' % (self.status, self.addr, self.extaddr)
+VMState = namedtuple('VMState', ['status', 'addr', 'extaddr'])
 
 
 def main_loop():
@@ -76,6 +71,8 @@ def main_loop():
                              previous_container_state, container_state)
 
         iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
+
+        time.sleep(5)
 
         continue
 
