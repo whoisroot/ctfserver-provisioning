@@ -393,7 +393,7 @@ def sync_containers(openstack_servers, vm_state):
                                                vm_uuid,
                                                state.addr))
             else:
-                container_state[vm_uuid] = []
+                container_state[vm_uuid] = set()
 
     for func, args in wait_pending(pending):
         uuid, containers = args
