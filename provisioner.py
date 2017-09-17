@@ -278,6 +278,8 @@ def compute_target_state(openstack_servers, released_challs):
                 for vm_uuid in openstack_servers[chall]:
                     containers[vm_uuid].append(container_name)
 
+    return containers
+
 
 def get_accepted_submissions():
     r = requests.get(ACCEPTED_SUBMISSIONS_URL, {'_': os.urandom(16)})
