@@ -8,6 +8,7 @@ import time
 import shlex
 import logging
 import requests
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from subprocess import Popen
 from collections import namedtuple
@@ -32,6 +33,7 @@ MIN_SOLVES = 1 # Minimum number of solves required for team to be provisioned
 SSH_USER = "ubuntu" # User to authenticate and start containers in the challenge VMs
 SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge VMs
 MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
+MAX_PROVISIONED_ID = 4095 # maximum id for provisioned teams
 ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
 # URL from which we will get the accepted-submissions.json file
 ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/pwn2winctf/"\
@@ -40,6 +42,7 @@ ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/pwn2winctf/"\
 
 OPENSTACK_SERVERS = "openstack_servers.json"
 RELEASED_CHALLS = "released_challs.json"
+TEAM_ID_DB = "team_id.db"
 VPN_ID = "_vpn"  # VPN server name in OPENSTACK_SERVERS json file
 
 
@@ -48,7 +51,7 @@ VMState = namedtuple('VMState', ['status', 'addr', 'extaddr'])
 
 def main_loop():
     iteration = 0
-    released_challs = []
+    released_challs = set([])
     vm_state = {}
     container_state = {}
     logging.info("Starting the main loop")
@@ -258,15 +261,57 @@ def vm_start(server):
         pass
 
 
+def compute_target_state(openstack_servers, released_challs):
+    containers = {}
+    for chall, vm_uuids in openstack_servers.items():
+        for vm_uuid in vm_uuids:
+            containers[vm_uuid] = []
+
+    submissions = get_accepted_submissions()
+    for team in submissions['standings']:
+        team_name = team['team']
+        solved_challs = set(team['taskStats'].keys())
+        if len(solved_challs) >= MIN_SOLVES:
+            container_name = get_container_name(team_name)
+            active_challs = released_challs - solved_challs
+            for chall in active_challs:
+                for vm_uuid in openstack_servers[chall]:
+                    containers[vm_uuid].append(container_name)
+
+
 def get_accepted_submissions():
     r = requests.get(ACCEPTED_SUBMISSIONS_URL, {'_': os.urandom(16)})
     r.raise_for_status()
     return r.json()
 
 
+def get_container_name(team_name):
+    return "team-%d" % get_team_id(team_name)
+
+
+def get_team_id(team_name):
+    with sqlite3.connect(TEAM_ID_DB) as conn:
+        c = conn.cursor()
+        c.execute("CREATE TABLE IF NOT EXISTS "
+                  "map (id INTEGER PRIMARY KEY CHECK(id <= %d), "
+                  "     name UNIQUE);" %
+                  (MAX_PROVISIONED_ID + 1,))
+        try:
+            # INSERT OR IGNORE always increments the id :/
+            c.execute("INSERT INTO map (name) VALUES (?1)",
+                      (team_name,))
+        except sqlite3.IntegrityError:
+            pass # ID already allocated for team
+        conn.commit()
+        c.execute("SELECT id FROM map WHERE name=?1",
+                  (team_name, ))
+        team_id, = c.fetchone()
+    return team_id - 1  # sqlite starts counting at 1
+
+
 def read_released_challs():
     with open(RELEASED_CHALLS) as f:
-        return json.load(f)
+        return set(json.load(f))
 
 
 def sync_containers(openstack_servers, vm_state):
