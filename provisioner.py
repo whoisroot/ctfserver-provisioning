@@ -135,6 +135,8 @@ def handle_container_transition(openstack_servers, vm_state,
         if vm_uuid in vpn_vm_uuids:
             continue
         if container not in target_state[vm_uuid]:
+            logging.info('Container %r not in %r',
+                         container, target_state[vm_uuid])
             team_id = get_team_id_from_container_name(container)
             pending.append(executor.submit(stop_container,
                                            vm_uuid,
