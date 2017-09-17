@@ -87,7 +87,8 @@ def main_loop():
 
             start_vms(vm_state, container_state, target_state)
 
-            handle_container_transition(vm_state, container_state, target_state)
+            handle_container_transition(openstack_servers, vm_state,
+                                        container_state, target_state)
             if container_state != target_state:
                 logging.error('Current state: %r. Failed to achieve state %r.',
                               container_state, target_state)
