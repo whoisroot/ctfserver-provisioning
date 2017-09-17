@@ -279,12 +279,12 @@ def vm_start(server):
 
 
 def sync_vms():
-    with open(CHALL_SERVERS) as f:
-        chall_servers = json.load(f)
+    with open(OPENSTACK_SERVERS) as f:
+        openstack_servers = json.load(f)
 
     vm_state = {}
 
-    for chall, vm_uuids in chall_servers.items():
+    for chall, vm_uuids in openstack_servers.items():
         for vm_uuid in vm_uuids:
             vm = openstack.compute.get_server(vm_uuid)
 
@@ -309,7 +309,7 @@ def sync_vms():
             extaddr = get_addr(EXTADDR_CONSTRAINTS)
             vm_state[vm_uuid] = VMState(status, addr, extaddr)
 
-    return chall_servers, vm_state
+    return openstack_servers, vm_state
 
 
 if __name__ == '__main__':
