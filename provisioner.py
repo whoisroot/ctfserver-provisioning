@@ -42,6 +42,8 @@ class VMState:
         self.status = status
         self.addr = addr
         self.extaddr = extaddr
+    def __repr__(self):
+        return '<VMState(%r, %r, %r)>' % (self.status, self.addr, self.extaddr)
 
 
 def main_loop(chall_server):
