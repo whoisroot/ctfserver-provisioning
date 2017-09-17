@@ -60,9 +60,7 @@ def main_loop(chall_server):
         if iteration == 0 or released_challs != previously_released_challs:
             logging.info("Syncing state")
             openstack_servers, vm_state = sync_vms()
-            # Handle special servers
             vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
-
         iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
 
         pending = []
@@ -131,10 +129,10 @@ def start_vpn(host, extaddr, team_id):
         elif status == 'vpn_already_exists':
             logging.warn('VPN for team %d was already started' % team_id)
             return None
-        logging.error("Unexpected output from start_vpn(%s, %s, %d): %s",
+        logging.error("Unexpected output from start_vpn(%r, %r, %d): %s",
                       host, extaddr, team_id, '\n'.join(output))
     except:
-        logging.exception("Got exception on start_vpn(%s, %s, %d)",
+        logging.exception("Got exception on start_vpn(%r, %r, %d)",
                           host, extaddr, team_id)
     return None
 
@@ -145,11 +143,11 @@ def start_container(host, team_id):
         status, container_name = ssh_exec(host, command).split(':')
         assert status in ('started', 'already_started')
         if status == 'already_started':
-            logging.warn('Container %s was already started in host %s',
+            logging.warn('Container %r was already started in host %r',
                          container_name, host)
         return ("start_container", (host, team_id))
     except:
-        logging.exception("Got exception on start_container(%s, %d)",
+        logging.exception("Got exception on start_container(%r, %d)",
                           host, team_id)
     return None
 
@@ -160,17 +158,25 @@ def stop_container(host, team_id):
         status, container_name = ssh_exec(host, command).split(':')
         assert status in ('stopped', 'already_stopped')
         if status == 'already_stopped':
-            logging.warn('Container %s was already stopped in host %s',
+            logging.warn('Container %r was already stopped in host %r',
                          container_name, host)
         return ("stop_container", (host, team_id))
     except:
-        logging.exception("Got exception on stop_container(%s, %d)",
+        logging.exception("Got exception on stop_container(%r, %d)",
                           host, team_id)
     return None
 
 
-def list_containers(host):
-    return ssh_exec(host, 'lxc list --format=csv --columns=n').split()
+def list_containers(uuid, host):
+    try:
+        containers = ssh_exec(host,
+                              "lxc list --format=csv --columns=n "
+                              "'^team-'").split()
+        return ("list_containers", (uuid, containers))
+    except:
+        logging.exception("Got exception on list_containers(%r, %r)",
+                          uuid, host)
+    return None
 
 
 def wait_pending(pending, timeout=60):
@@ -237,6 +243,27 @@ def vm_start(server):
 def read_released_challs():
     with open(RELEASED_CHALLS) as f:
         return json.load(f)
+
+
+def sync_containers(openstack_servers, vm_state):
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+    pending = []
+
+    for chall, vm_uuids in openstack_servers.items():
+        for vm_uuid in vm_uuids:
+            state = vm_state[vm_uuid]
+            if state.status == "on":
+                container_state[vm_uuid] = []
+            else:
+                pending.append(executor.submit(list_containers,
+                                               (vm_uuid, state.addr)))
+
+    container_state = {}
+    for func, args in wait_pending(pending):
+        uuid, containers = args
+        container_state[uuid] = containers
+
+    return container_state
 
 
 def sync_vms():
