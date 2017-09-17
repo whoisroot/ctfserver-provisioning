@@ -102,7 +102,9 @@ def start_vpn(team_id):
     try:
         password = pwgen(pw_length=20, no_ambiguous=True)
         user = "team-%d" % team_id
-        message = "Run: ./setup-vpn '%s' '%s' '%s'" % (user, password, VPN_VM_IP)
+        message = "Run: ./setup-vpn %s %s %s" % (shlex.quote(user),
+                                                 shlex.quote(password),
+                                                 shlex.quote(VPN_VM_IP))
         # Start the container for the specified team
         command = "./deploy_team %d %s '%s'" % (team_id,
                                                 shlex.quote(user),
