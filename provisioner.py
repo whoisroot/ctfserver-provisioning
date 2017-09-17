@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 
-import json
-import os_client_config
-import paramiko
 import os
+import re
 import time
+import json
 import shlex
 import logging
 import requests
 import sqlite3
+import os_client_config
+import paramiko
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from subprocess import Popen
 from collections import namedtuple
 from pwgen import pwgen
 
 logging.basicConfig(level=logging.INFO)
-openstack = os_client_config.make_sdk()
 
 
 #
@@ -35,6 +35,7 @@ SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge V
 MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
 MAX_PROVISIONED_ID = 4095 # maximum id for provisioned teams
 ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
+MAIN_LOOP_ITERATION_SLEEP = 60 # seconds to sleep between iterations
 # URL from which we will get the accepted-submissions.json file
 ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/pwn2winctf/"\
     "test_submissions/73ba8c39d8f9eee530dae1c7c2a506690df28e80/"\
@@ -44,6 +45,8 @@ OPENSTACK_SERVERS = "openstack_servers.json"
 RELEASED_CHALLS = "released_challs.json"
 TEAM_ID_DB = "team_id.db"
 VPN_ID = "_vpn"  # VPN server name in OPENSTACK_SERVERS json file
+
+CONTAINER_PREFIX = "team-"
 
 
 VMState = namedtuple('VMState', ['status', 'addr', 'extaddr'])
@@ -57,85 +60,157 @@ def main_loop():
     logging.info("Starting the main loop")
 
     while True:
-        previously_released_challs = released_challs
-        released_challs = read_released_challs()
+        try:
+            previously_released_challs = released_challs
+            released_challs = read_released_challs()
 
-        if iteration == 0 or released_challs != previously_released_challs:
-            logging.info("Syncing state")
+            if iteration == 0 or released_challs != previously_released_challs:
+                logging.info("Syncing state")
 
-            previous_vm_state = vm_state
-            previous_container_state = container_state
+                previous_vm_state = vm_state
+                previous_container_state = container_state
 
-            openstack_servers, vm_state = sync_vms()
-            vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
-            container_state = sync_containers(openstack_servers, vm_state)
+                openstack_servers, vm_state = sync_vms()
+                container_state = sync_containers(openstack_servers, vm_state)
 
-            if vm_state != previous_vm_state:
-                logging.warn('VM state changed from %r to %r',
-                             previous_vm_state, vm_state)
-            if container_state != previous_container_state:
-                logging.warn('Container state changed from %r to %r',
-                             previous_container_state, container_state)
+                if vm_state != previous_vm_state:
+                    logging.warn('VM state changed from %r to %r',
+                                 previous_vm_state, vm_state)
+                if container_state != previous_container_state:
+                    logging.warn('Container state changed from %r to %r',
+                                 previous_container_state, container_state)
 
-        iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
+            iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
 
-        time.sleep(5)
+            target_state = compute_target_state(openstack_servers,
+                                                released_challs)
 
-        continue
+            start_vms(openstack_servers, vm_state, container_state, target_state)
 
-        executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
-        pending = []
+            handle_container_transition(vm_state, container_state, target_state)
+            if container_state != target_state:
+                logging.error('Current state: %r. Failed to achieve state %r.',
+                              container_state, target_state)
 
-        # If there are new solves, stop the containers in the solves list
-        if new_solves:
-            for challenge in solves_list:
-                for team in solves_list[challenge]:
-                    logging.info("Stopping chall %s containers for team %s", challenge, team)
-                    for server in chall_server[challenge]:
-                        pending.append(executor.submit(stop_container(server, team)))
+            stop_idle_vms(vm_state, container_state)
+        except:
+            logging.exception("Exception on main_loop")
 
-        # If there are new teams, start a container in every challenge VM for each new team
-        if new_team:
-            logging.info("Provisioning containers for new teams %r", new_teams_list)
-            for team_id in new_teams_list:
-                start_vpn(vpn_addr, vpn_extaddr, team_id)
-            for chall_name in chall_ready:
-                for server in chall_server[chall_name]:
-                    for team_id in new_teams_list:
-                        pending.append(executor.submit(start_container(server, team_id)))
-            teams_playing += len(new_teams_list)
-
-        # If there are new challenges, start a container for every team playing in the new VM
-        if new_chall:
-            for i in range(size_ready-diff_pos, size_ready):
-                chall_name = chall_ready[i]
-                for server in chall_server[chall_name]:
-                    for team_id in range(0, teams_playing - 1):
-                        pending.append(executor.submit(start_container(server, team_id)))
-
-        for func, args in wait_pending(pending):
-            if func == "start_vpn":
-                team_id, message = args
-                p = Popen([NIZKCTF_PATH+"/ctf", "add_news",
-                           "--msg", message,
-                           "--to", teams[team_id]["name"]])
-                p.wait()
-            elif func == "start_container":
-                host, team_id = args
-                # TODO
-            elif func == "stop_container":
-                host, team_id = args
-                # TODO
-
-        for chall_name in chall_ready:
-            for server in chall_server[chall_name]:
-                idle_vm_shutoff(server) # Check all VMs to test if there are containers running, shut them down if not
-
-        time.sleep(60)
+        time.sleep(MAIN_LOOP_ITERATION_SLEEP)
 
 
-def start_vpn(host, extaddr, team_id):
+def handle_container_transition(openstack_servers, vm_state,
+                                container_state, target_state):
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+    pending = []
+
+    vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
+    vpn_vm_uuids = set(openstack_servers[VPN_ID])
+
+    # Handle starting VPN if needed
+    for vm_uuid in vpn_vm_uuids:
+        for container in target_state[vm_uuid]:
+            if container not in container_state[vm_uuid]:
+                team_id = get_team_id_from_container_name(container)
+                pending.append(executor.submit(start_vpn,
+                                               vm_uuid,
+                                               vpn_addr,
+                                               vpn_extaddr,
+                                               team_id))
+
+    # Start challenge containers if needed
+    for vm_uuid, containers in target_state.items():
+        if vm_uuid in vpn_vm_uuids:
+            continue
+        if container not in container_state[vm_uuid]:
+            team_id = get_team_id_from_container_name(container)
+            pending.append(executor.submit(start_container,
+                                           vm_uuid,
+                                           openstack_servers[vm_uuid].addr,
+                                           team_id))
+
+    # Stop challenge containers if not needed anymore
+    for vm_uuid, containers in container_state.items():
+        if vm_uuid in vpn_vm_uuids:
+            continue
+        if container not in target_state[vm_uuid]:
+            team_id = get_team_id_from_container_name(container)
+            pending.append(executor.submit(stop_container,
+                                           vm_uuid,
+                                           openstack_servers[vm_uuid].addr,
+                                           team_id))
+
+    for func, args in wait_pending(pending):
+        if func == "start_vpn":
+            vm_uuid, team_id, message = args
+            team_name = get_team_name(team_id)
+            logging.info("Sending VPN credentials to team %r" % team_name)
+            p = Popen([os.path.join(NIZKCTF_PATH, "ctf"), "add_news",
+                       "--msg", message,
+                       "--to", team_name])
+            p.wait()
+            container = get_container_from_team_id(team_id)
+            container_state[vm_uuid].add(container)
+        elif func == "start_container":
+            vm_uuid, host, team_id = args
+            container = get_container_from_team_id(team_id)
+            container_state[vm_uuid].add(container)
+        elif func == "stop_container":
+            vm_uuid, host, team_id = args
+            container = get_container_from_team_id(team_id)
+            container_state[vm_uuid].remove(container)
+
+
+def start_vms(vm_state, container_state, target_state):
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+    pending = []
+
+    for vm_uuid, containers in target_state.items():
+        if len(containers) > 0 and len(container_state[vm_uuid] == 0):
+            if vm_state[vm_uuid].status == "off":
+                pending.append(executor.submit(start_vm, vm_uuid))
+
+    for func, args in wait_pending(pending):
+        uuid, = args
+        vm_state[uuid].status = "on"
+
+
+def stop_idle_vms(vm_state, container_state):
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+    pending = []
+
+    for vm_uuid, containers in container_state.items():
+        if len(containers) == 0:
+            if vm_state[vm_uuid].status == "on":
+                pending.append(executor.submit(stop_vm, vm_uuid))
+
+    for func, args in wait_pending(pending):
+        uuid, = args
+        vm_state[uuid].status = "off"
+
+    return container_state
+
+
+def stop_vm(vm_uuid):
+    openstack = os_client_config.make_sdk()
+    openstack.compute.stop_server(vm_uuid)
+    return ("stop_vm", (vm_uuid, ))
+
+
+def start_vm(vm_uuid):
+    openstack = os_client_config.make_sdk()
+    openstack.compute.start_server(vm_uuid)
+    while True:
+        vm = openstack.compute.get_server(vm_uuid)
+        if vm.status == "ACTIVE":
+            break
+        time.sleep(2)
+    return ("start_vm", (vm_uuid, ))
+
+
+def start_vpn(vm_uuid, host, extaddr, team_id):
     try:
+        logging.info('Starting VPN for team %d', team_id)
         password = pwgen(pw_length=20, no_ambiguous=True)
         message = "Run: ./setup-vpn %s %d %s" % (shlex.quote(extaddr),
                                                  team_id,
@@ -146,7 +221,7 @@ def start_vpn(host, extaddr, team_id):
         output = ssh_exec(host, command)
         status = output[-1].split(':')[0]
         if status == 'vpn_created':
-            return ("start_vpn", (team_id, message))
+            return ("start_vpn", (vm_uuid, team_id, message))
         elif status == 'vpn_already_exists':
             logging.warn('VPN for team %d was already started' % team_id)
             return None
@@ -158,56 +233,50 @@ def start_vpn(host, extaddr, team_id):
     return None
 
 
-def start_container(host, team_id):
+def start_container(vm_uuid, host, team_id):
     try:
+        logging.info('Starting container in host %r for team %d',
+                     host, team_id)
         command = "./start_container %d" % team_id
         status, container_name = ssh_exec(host, command).split(':')
         assert status in ('started', 'already_started')
         if status == 'already_started':
             logging.warn('Container %r was already started in host %r',
                          container_name, host)
-        return ("start_container", (host, team_id))
+        return ("start_container", (vm_uuid, host, team_id))
     except:
         logging.exception("Got exception on start_container(%r, %d)",
                           host, team_id)
     return None
 
 
-def stop_container(host, team_id):
+def stop_container(vm_uuid, host, team_id):
     try:
+        logging.info('Stopping container in host %r for team %d',
+                     host, team_id)
         command = "./stop_container %d" % team_id
         status, container_name = ssh_exec(host, command).split(':')
         assert status in ('stopped', 'already_stopped')
         if status == 'already_stopped':
             logging.warn('Container %r was already stopped in host %r',
                          container_name, host)
-        return ("stop_container", (host, team_id))
+        return ("stop_container", (vm_uuid, host, team_id))
     except:
         logging.exception("Got exception on stop_container(%r, %d)",
                           host, team_id)
     return None
 
 
-def list_containers(uuid, host):
+def list_containers(vm_uuid, host):
     try:
         containers = ssh_exec(host,
                               "lxc list --format=csv --columns=n "
-                              "'^team-'").split()
-        return ("list_containers", (uuid, containers))
+                              "'^%s'" % CONTAINER_PREFIX).split()
+        return ("list_containers", (vm_uuid, set(containers)))
     except:
         logging.exception("Got exception on list_containers(%r, %r)",
-                          uuid, host)
+                          vm_uuid, host)
     return None
-
-
-def wait_pending(pending, timeout=60):
-    try:
-        for future in as_completed(pending, timeout=60):
-            result = future.result()
-            if result is not None:
-                yield result
-    except TimeoutError:
-        logging.exception("Timeout when waiting for threads to finish")
 
 
 def ssh_exec(host, command, retries=5, timeout=2):
@@ -233,50 +302,23 @@ def ssh_exec(host, command, retries=5, timeout=2):
     return output
 
 
-def idle_vm_shutoff(server):
-    # Can only shutdown active servers
-    if server["power_state"] == "on":
-        vm_ip = server["IP"]
-        client = paramiko.SSHClient()
-        client.load_system_host_keys()
-        client.connect(vm_ip, 22, SSH_USER) #IP, port, username
-        stdin, stdout, stderr = client.exec_command("lxc list | grep RUNNING | wc -l") # Get number of running containers
-        for line in stdout:
-            containers = int(line.strip('\n'))
-        # Shutdown VM if not in use
-        if containers == 0:
-            openstack.compute.stop_server(server)
-    else:
-        pass
-
-
-def vm_start(server):
-    if server["power_state"] == "off":
-        openstack.compute.get_server(server["id"])
-        while vm.status == "SHUTOFF":
-            sleep(3)
-            vm = openstack.compute.get_server(server["id"])
-        server["power_state"] = "on"
-    else:
-        pass
-
-
 def compute_target_state(openstack_servers, released_challs):
     containers = {}
     for chall, vm_uuids in openstack_servers.items():
         for vm_uuid in vm_uuids:
-            containers[vm_uuid] = []
+            containers[vm_uuid] = set()
 
     submissions = get_accepted_submissions()
     for team in submissions['standings']:
         team_name = team['team']
         solved_challs = set(team['taskStats'].keys())
         if len(solved_challs) >= MIN_SOLVES:
-            container_name = get_container_name(team_name)
+            container_name = get_container_from_team_name(team_name)
             active_challs = released_challs - solved_challs
+            active_challs += {VPN_ID,}  # the VPN containers are always on
             for chall in active_challs:
                 for vm_uuid in openstack_servers[chall]:
-                    containers[vm_uuid].append(container_name)
+                    containers[vm_uuid].add(container_name)
 
     return containers
 
@@ -287,17 +329,30 @@ def get_accepted_submissions():
     return r.json()
 
 
-def get_container_name(team_name):
-    return "team-%d" % get_team_id(team_name)
+def get_container_from_team_name(team_name):
+    return get_container_from_team_id(get_team_id(team_name))
+
+
+def get_container_from_team_id(team_id):
+    return "%s%d" % (CONTAINER_PREFIX, team_id)
+
+
+def get_team_id_from_container_name(container_name):
+    return int(re.match('^%s(\d+)$' % CONTAINER_PREFIX).group(1))
+
+
+def _create_db_get_cursor(conn):
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS "
+                  "map (id INTEGER PRIMARY KEY CHECK(id <= %d), "
+                  "     name UNIQUE);" %
+                  (MAX_PROVISIONED_ID + 1,))
+    return c
 
 
 def get_team_id(team_name):
     with sqlite3.connect(TEAM_ID_DB) as conn:
-        c = conn.cursor()
-        c.execute("CREATE TABLE IF NOT EXISTS "
-                  "map (id INTEGER PRIMARY KEY CHECK(id <= %d), "
-                  "     name UNIQUE);" %
-                  (MAX_PROVISIONED_ID + 1,))
+        c = _create_db_get_cursor(conn)
         try:
             # INSERT OR IGNORE always increments the id :/
             c.execute("INSERT INTO map (name) VALUES (?1)",
@@ -311,9 +366,13 @@ def get_team_id(team_name):
     return team_id - 1  # sqlite starts counting at 1
 
 
-def read_released_challs():
-    with open(RELEASED_CHALLS) as f:
-        return set(json.load(f))
+def get_team_name(team_id):
+    with sqlite3.connect(TEAM_ID_DB) as conn:
+        c = _create_db_get_cursor(conn)
+        c.execute("SELECT name FROM map WHERE id=?1",
+                  (team_id + 1, )) # sqlite starts counting at 1
+        team_name, = c.fetchone()
+    return team_name
 
 
 def sync_containers(openstack_servers, vm_state):
@@ -339,6 +398,8 @@ def sync_containers(openstack_servers, vm_state):
 
 
 def sync_vms():
+    openstack = os_client_config.make_sdk()
+
     with open(OPENSTACK_SERVERS) as f:
         openstack_servers = json.load(f)
 
@@ -378,6 +439,21 @@ def get_vpn_addrs(openstack_servers, vm_state):
     if state.status != "on":
         logging.critical("THE VPN VM IS OFF, TURN IT ON")
     return state.addr, state.extaddr
+
+
+def read_released_challs():
+    with open(RELEASED_CHALLS) as f:
+        return set(json.load(f))
+
+
+def wait_pending(pending, timeout=60):
+    try:
+        for future in as_completed(pending, timeout=60):
+            result = future.result()
+            if result is not None:
+                yield result
+    except TimeoutError:
+        logging.exception("Timeout when waiting for threads to finish")
 
 
 if __name__ == '__main__':
