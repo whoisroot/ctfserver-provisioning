@@ -254,8 +254,9 @@ def sync_containers(openstack_servers, vm_state):
         for vm_uuid in vm_uuids:
             state = vm_state[vm_uuid]
             if state.status == "on":
-                pending.append(executor.submit(list_containers(vm_uuid,
-                                                               state.addr)))
+                pending.append(executor.submit(list_containers,
+                                               vm_uuid,
+                                               state.addr))
             else:
                 container_state[vm_uuid] = []
 
