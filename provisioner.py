@@ -59,9 +59,24 @@ def main_loop(chall_server):
 
         if iteration == 0 or released_challs != previously_released_challs:
             logging.info("Syncing state")
+
+            previous_vm_state = vm_state
+            previous_container_state = container_state
+
             openstack_servers, vm_state = sync_vms()
             vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
+            container_state = sync_containers(openstack_servers, vm_state)
+
+            if vm_state != previous_vm_state:
+                logging.warn('VM state changed from %r to %r',
+                             previous_vm_state, vm_state)
+            if container_state != previous_container_state:
+                logging.warn('Container state changed from %r to %r',
+                             previous_container_state, container_state)
+
         iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
+
+        continue
 
         pending = []
 
