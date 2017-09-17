@@ -127,7 +127,7 @@ def handle_container_transition(openstack_servers, vm_state,
             team_id = get_team_id_from_container_name(container)
             pending.append(executor.submit(start_container,
                                            vm_uuid,
-                                           openstack_servers[vm_uuid].addr,
+                                           vm_state[vm_uuid].addr,
                                            team_id))
 
     # Stop challenge containers if not needed anymore
@@ -138,7 +138,7 @@ def handle_container_transition(openstack_servers, vm_state,
             team_id = get_team_id_from_container_name(container)
             pending.append(executor.submit(stop_container,
                                            vm_uuid,
-                                           openstack_servers[vm_uuid].addr,
+                                           vm_state[vm_uuid].addr,
                                            team_id))
 
     for func, args in wait_pending(pending):
@@ -219,7 +219,7 @@ def start_vpn(vm_uuid, host, extaddr, team_id):
         # Start the container for the specified team
         command = "./deploy_team %d %s" % (team_id,
                                            shlex.quote(password))
-        output = ssh_exec(host, command)
+        output = ssh_exec(host, command).split()
         status = output[-1].split(':')[0]
         if status == 'vpn_created':
             return ("start_vpn", (vm_uuid, team_id, message))
