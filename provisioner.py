@@ -247,6 +247,7 @@ def read_released_challs():
 
 def sync_containers(openstack_servers, vm_state):
     executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+    container_state = {}
     pending = []
 
     for chall, vm_uuids in openstack_servers.items():
@@ -258,7 +259,6 @@ def sync_containers(openstack_servers, vm_state):
                 pending.append(executor.submit(list_containers,
                                                (vm_uuid, state.addr)))
 
-    container_state = {}
     for func, args in wait_pending(pending):
         uuid, containers = args
         container_state[uuid] = containers
