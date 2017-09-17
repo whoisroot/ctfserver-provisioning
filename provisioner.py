@@ -33,8 +33,9 @@ SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge V
 MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
 ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
 
-OPENSTACK_SERVERS = 'openstack_servers.json'
-RELEASED_CHALLS = 'released_challs.json'
+OPENSTACK_SERVERS = "openstack_servers.json"
+RELEASED_CHALLS = "released_challs.json"
+VPN_ID = "_vpn"  # VPN server name in OPENSTACK_SERVERS json file
 
 
 class VMState:
