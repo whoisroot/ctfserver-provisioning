@@ -47,10 +47,11 @@ class VMState:
         return '<VMState(%r, %r, %r)>' % (self.status, self.addr, self.extaddr)
 
 
-def main_loop(chall_server):
-    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
+def main_loop():
     iteration = 0
     released_challs = []
+    vm_state = {}
+    container_state = {}
     logging.info("Starting the main loop")
 
     while True:
@@ -78,6 +79,7 @@ def main_loop(chall_server):
 
         continue
 
+        executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
         pending = []
 
         # If there are new solves, stop the containers in the solves list
@@ -325,4 +327,4 @@ def get_vpn_addrs(openstack_servers, vm_state):
 
 
 if __name__ == '__main__':
-    main_loop(chall_server)
+    main_loop()
