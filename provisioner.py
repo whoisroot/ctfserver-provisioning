@@ -85,7 +85,7 @@ def main_loop():
             target_state = compute_target_state(openstack_servers,
                                                 released_challs)
 
-            start_vms(openstack_servers, vm_state, container_state, target_state)
+            start_vms(vm_state, container_state, target_state)
 
             handle_container_transition(vm_state, container_state, target_state)
             if container_state != target_state:
