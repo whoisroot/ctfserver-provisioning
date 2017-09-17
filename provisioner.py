@@ -110,8 +110,12 @@ def start_vpn(team_id):
                                                 shlex.quote(user),
                                                 shlex.quote(password))
         output = ssh_exec(VPN_VM_IP, command)
-        if output[-1].split(':') == 'ok':
+        status = output[-1].split(':')
+        if status == 'vpn_created':
             return ("start_vpn", (team_id, message))
+        elif status == 'vpn_already_exists':
+            logging.info('VPN for team %d was already started' % team_id)
+            return None
         logging.error("Unexpected output from start_vpn(%d): %s",
                       team_id, '\n'.join(output))
     except:
