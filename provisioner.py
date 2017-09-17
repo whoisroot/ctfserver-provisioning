@@ -166,7 +166,7 @@ def start_vms(vm_state, container_state, target_state):
     pending = []
 
     for vm_uuid, containers in target_state.items():
-        if len(containers) > 0 and len(container_state[vm_uuid] == 0):
+        if len(containers) > 0 and len(container_state[vm_uuid]) == 0:
             if vm_state[vm_uuid].status == "off":
                 pending.append(executor.submit(start_vm, vm_uuid))
 
