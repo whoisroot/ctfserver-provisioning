@@ -5,6 +5,7 @@ import os_client_config
 import paramiko
 import os
 import time
+import shlex
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from subprocess import Popen
@@ -103,12 +104,12 @@ def start_vpn(team_id):
         user = "team-%d" % team_id
         message = "Run: ./setup-vpn '%s' '%s' '%s'" % (user, password, VPN_VM_IP)
         # Start the container for the specified team
-        command = "./deploy_team %d %s %s" % (team_id, user, password)
+        command = "./deploy_team %d %s '%s'" % (team_id,
+                                                shlex.quote(user),
+                                                shlex.quote(password))
         output = ssh_exec(VPN_VM_IP, command)
         if output[-1].split(':') == 'ok':
             return ("start_vpn", (team_id, message))
-            #p = Popen([NIZKCTF_PATH+"/ctf", "add_news", "--msg", message, "--to", teams[team_id]["name"]])
-            #p.wait()
         logging.error("Unexpected output from start_vpn(%d): %s",
                       team_id, '\n'.join(output))
     except:
