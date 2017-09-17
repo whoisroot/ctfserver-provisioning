@@ -27,13 +27,12 @@ ADDR_CONSTRAINTS = {('version', 4),  # 4 for IPv4, 6 for IPv6
 EXTADDR_CONSTRAINTS = {('version', 4),
                        ('OS-EXT-IPS:type', 'floating')}
 NIZKCTF_PATH = "" # Path to the NIZKCTF repository
-VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containers
 MIN_SOLVES = 1 # Minimum number of solves required for team to be provisioned
 SSH_USER = "ubuntu" # User to authenticate and start containers in the challenge VMs
 SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge VMs
 MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
 
-CHALL_SERVERS = 'chall_servers.json'
+OPENSTACK_SERVERS = 'openstack_servers.json'
 RELEASED_CHALLS = 'released_challs.json'
 
 
@@ -84,7 +83,7 @@ def main_loop(chall_server):
         if new_team:
             logging.info("Provisioning containers for new teams %r", new_teams_list)
             for team_id in new_teams_list:
-                start_vpn(team_id, teams)
+                start_vpn(team_id, None, None)  # TODO
             for chall_name in chall_ready:
                 for server in chall_server[chall_name]:
                     for team_id in new_teams_list:
@@ -120,26 +119,27 @@ def main_loop(chall_server):
         time.sleep(60)
 
 
-def start_vpn(team_id):
+def start_vpn(host, extaddr, team_id):
     try:
         password = pwgen(pw_length=20, no_ambiguous=True)
-        message = "Run: ./setup-vpn %s %d %s" % (shlex.quote(VPN_VM_IP),
+        message = "Run: ./setup-vpn %s %d %s" % (shlex.quote(extaddr),
                                                  team_id,
                                                  shlex.quote(password))
         # Start the container for the specified team
         command = "./deploy_team %d %s" % (team_id,
                                            shlex.quote(password))
-        output = ssh_exec(VPN_VM_IP, command)
+        output = ssh_exec(host, command)
         status = output[-1].split(':')[0]
         if status == 'vpn_created':
             return ("start_vpn", (team_id, message))
         elif status == 'vpn_already_exists':
             logging.warn('VPN for team %d was already started' % team_id)
             return None
-        logging.error("Unexpected output from start_vpn(%d): %s",
-                      team_id, '\n'.join(output))
+        logging.error("Unexpected output from start_vpn(%s, %s, %d): %s",
+                      host, extaddr, team_id, '\n'.join(output))
     except:
-        logging.exception("Got exception on start_vpn(%d)", team_id)
+        logging.exception("Got exception on start_vpn(%s, %s, %d)",
+                          host, extaddr, team_id)
     return None
 
 
