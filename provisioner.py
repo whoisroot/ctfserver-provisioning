@@ -31,6 +31,7 @@ MIN_SOLVES = 1 # Minimum number of solves required for team to be provisioned
 SSH_USER = "ubuntu" # User to authenticate and start containers in the challenge VMs
 SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge VMs
 MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
+ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
 
 OPENSTACK_SERVERS = 'openstack_servers.json'
 RELEASED_CHALLS = 'released_challs.json'
@@ -46,28 +47,22 @@ class VMState:
 
 
 def main_loop(chall_server):
-    size_ready = 0
-    teams_playing = 0
-
     executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
-
+    iteration = 0
+    released_challs = []
     logging.info("Starting the main loop")
-    while 1:
-        solves_list = []
-        new_teams_list = []
-        new_team = False
-        new_chall = False
-        new_solves = False
 
-        with open("chall_ready.json") as f:
-            chall_ready = json.load(f)
+    while True:
+        previously_released_challs = released_challs
+        released_challs = read_released_challs()
 
-        if len(chall_ready) > size_ready:
-            new_chall = True
-            diff_pos = len(chall_ready) - size_ready - 1
-            size_ready = len(chall_ready)
+        if iteration == 0 or released_challs != previously_released_challs:
+            logging.info("Syncing state")
+            openstack_servers, vm_state = sync_vms()
+            # Handle special servers
+            vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
 
-        new_team, new_teams_list, new_solves, solves_list, teams = update_score(NIZKCTF_PATH, MIN_SOLVES, chall_ready) # Checks for new teams and solves on scoreboard
+        iteration = (iteration + 1) % ITERATIONS_BETWEEN_SYNCS
 
         pending = []
 
@@ -83,7 +78,7 @@ def main_loop(chall_server):
         if new_team:
             logging.info("Provisioning containers for new teams %r", new_teams_list)
             for team_id in new_teams_list:
-                start_vpn(team_id, None, None)  # TODO
+                start_vpn(vpn_addr, vpn_extaddr, team_id)
             for chall_name in chall_ready:
                 for server in chall_server[chall_name]:
                     for team_id in new_teams_list:
@@ -210,46 +205,6 @@ def ssh_exec(host, command, retries=5, timeout=2):
     return output
 
 
-def update_score(path, minSolves, chall_ready):
-    with open(path+"/submissions/accepted-submissions.json") as f:
-        accepted_submissions = json.load(f) # Polls the scoreboard
-    if len(accepted_submissions) == 0:
-        return False, [], False, [], []
-    with open("chall_teams.json") as f:
-        chall_teams = json.load(f) # Current teams being provisioned
-
-    size = len(chall_teams)
-    solve = False
-    new_team = False
-    new_teams_list = []
-    solves_list = []
-
-    for team in accepted_submissions["standings"]:
-        team_id = -1
-        for i in range(0, size):
-            # Checks if team already being provisioned and their ID
-            if team["team"] == chall_teams[i]["name"]:
-                team_id = i
-                break
-        # New team, add them to the end of the file containing teams
-        if team_id < 0 and len(team["taskStats"]) >= minSolves:
-            chall_teams.append({"name": team["team"], "solved": []})
-            new_team = True
-            new_teams_list.append(size)
-            size += 1
-        else:
-            for challenge in team['taskStats']:
-                # Checks for newly solved challenges and add the to the team solves
-                if challenge in chall_ready:
-                    if challenge not in chall_teams[team_id]["solved"]:
-                        chall_teams[team_id]["solved"].append(challenge)
-                        solve = True
-                        solves_list[challenge].append(team_id)
-    with open("chall_teams.json", 'w') as f:
-        json.dump(chall_teams, f) # Saves the final result
-    return new_team, new_teams_list, new_solves, solves_list, chall_teams
-
-
 def idle_vm_shutoff(server):
     # Can only shutdown active servers
     if server["power_state"] == "on":
@@ -276,6 +231,11 @@ def vm_start(server):
         server["power_state"] = "on"
     else:
         pass
+
+
+def read_released_challs():
+    with open(RELEASED_CHALLS) as f:
+        return json.load(f)
 
 
 def sync_vms():
@@ -310,6 +270,14 @@ def sync_vms():
             vm_state[vm_uuid] = VMState(status, addr, extaddr)
 
     return openstack_servers, vm_state
+
+
+def get_vpn_addrs(openstack_servers, vm_state):
+    vpn_uuid, = openstack_servers[VPN_ID]
+    state = vm_state[vpn_uuid]
+    if state.status != "on":
+        logging.critical("THE VPN VM IS OFF, TURN IT ON")
+    return state.addr, state.extaddr
 
 
 if __name__ == '__main__':
