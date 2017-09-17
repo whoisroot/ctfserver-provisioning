@@ -339,7 +339,8 @@ def get_container_from_team_id(team_id):
 
 
 def get_team_id_from_container_name(container_name):
-    return int(re.match('^%s(\d+)$' % CONTAINER_PREFIX).group(1))
+    return int(re.match('^%s(\d+)$' % CONTAINER_PREFIX, container_name)
+               .group(1))
 
 
 def _create_db_get_cursor(conn):
