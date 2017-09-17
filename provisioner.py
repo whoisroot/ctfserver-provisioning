@@ -7,6 +7,7 @@ import os
 import time
 import shlex
 import logging
+import requests
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from subprocess import Popen
 from pwgen import pwgen
@@ -101,20 +102,18 @@ def main_loop(chall_server):
 def start_vpn(team_id):
     try:
         password = pwgen(pw_length=20, no_ambiguous=True)
-        user = "team-%d" % team_id
-        message = "Run: ./setup-vpn %s %s %s" % (shlex.quote(user),
-                                                 shlex.quote(password),
-                                                 shlex.quote(VPN_VM_IP))
+        message = "Run: ./setup-vpn %s %d %s" % (shlex.quote(VPN_VM_IP),
+                                                 team_id,
+                                                 shlex.quote(password))
         # Start the container for the specified team
-        command = "./deploy_team %d %s '%s'" % (team_id,
-                                                shlex.quote(user),
-                                                shlex.quote(password))
+        command = "./deploy_team %d %s" % (team_id,
+                                           shlex.quote(password))
         output = ssh_exec(VPN_VM_IP, command)
         status = output[-1].split(':')
         if status == 'vpn_created':
             return ("start_vpn", (team_id, message))
         elif status == 'vpn_already_exists':
-            logging.info('VPN for team %d was already started' % team_id)
+            logging.warn('VPN for team %d was already started' % team_id)
             return None
         logging.error("Unexpected output from start_vpn(%d): %s",
                       team_id, '\n'.join(output))
