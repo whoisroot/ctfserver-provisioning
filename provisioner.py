@@ -13,23 +13,42 @@ from subprocess import Popen
 from pwgen import pwgen
 
 logging.basicConfig(level=logging.INFO)
+openstack = os_client_config.make_sdk()
 
 
-CTF_network = "ctf_net" # Name of the network on OpenStack used for the CTF
-IP_type = 0 # 0 for internal network, 1 for IPv6, 2 for floating IP
+#
+# Configuration
+#
+CTF_NETWORK = "ctf_net" # Name of the network on OpenStack used for the CTF
+# Constraints for the addresses to which the provisioner connects
+ADDR_CONSTRAINTS = {('version', 4),  # 4 for IPv4, 6 for IPv6
+                    ('OS-EXT-IPS:type', 'fixed')}  # 'fixed' for internal network, 'floating' for floating IP
+# Constraints for external addresses given to users (e.g. VPN address)
+EXTADDR_CONSTRAINTS = {('version', 4),
+                       ('OS-EXT-IPS:type', 'floating')}
 NIZKCTF_PATH = "" # Path to the NIZKCTF repository
 VPN_VM_IP = "" # The floating/external IP of the VM with the VPN server containers
-min_solves = 1 # Minimum number of solves required for team to be provisioned
-VM_user = "ubuntu" # User to authenticate and start containers in the challenge VMs
-VM_ssh_port = 22 # SSH port to authenticate and start containers in the challenge VMs
-max_concurrent_connections = 10 # maximum concurrent connections to SSH or OpenStack API
+MIN_SOLVES = 1 # Minimum number of solves required for team to be provisioned
+SSH_USER = "ubuntu" # User to authenticate and start containers in the challenge VMs
+SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge VMs
+MAX_CONCURRENT_CONNS = 10 # maximum concurrent connections to SSH or OpenStack API
+
+CHALL_SERVERS = 'chall_servers.json'
+RELEASED_CHALLS = 'released_challs.json'
+
+
+class VMState:
+    def __init__(self, status, addr, extaddr=None):
+        self.status = status
+        self.addr = addr
+        self.extaddr = extaddr
 
 
 def main_loop(chall_server):
     size_ready = 0
     teams_playing = 0
 
-    executor = ThreadPoolExecutor(max_workers=max_concurrent_connections)
+    executor = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_CONNS)
 
     logging.info("Starting the main loop")
     while 1:
@@ -47,7 +66,7 @@ def main_loop(chall_server):
             diff_pos = len(chall_ready) - size_ready - 1
             size_ready = len(chall_ready)
 
-        new_team, new_teams_list, new_solves, solves_list, teams = update_score(NIZKCTF_PATH, min_solves, chall_ready) # Checks for new teams and solves on scoreboard
+        new_team, new_teams_list, new_solves, solves_list, teams = update_score(NIZKCTF_PATH, MIN_SOLVES, chall_ready) # Checks for new teams and solves on scoreboard
 
         pending = []
 
@@ -109,7 +128,7 @@ def start_vpn(team_id):
         command = "./deploy_team %d %s" % (team_id,
                                            shlex.quote(password))
         output = ssh_exec(VPN_VM_IP, command)
-        status = output[-1].split(':')
+        status = output[-1].split(':')[0]
         if status == 'vpn_created':
             return ("start_vpn", (team_id, message))
         elif status == 'vpn_already_exists':
@@ -172,7 +191,7 @@ def ssh_exec(host, command, retries=5, timeout=2):
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     for i in range(retries):
         try:
-            client.connect(host, VM_ssh_port, VM_user,
+            client.connect(host, SSH_PORT, SSH_USER,
                            timeout=timeout,
                            banner_timeout=timeout,
                            auth_timeout=timeout)
@@ -235,44 +254,61 @@ def idle_vm_shutoff(server):
         vm_ip = server["IP"]
         client = paramiko.SSHClient()
         client.load_system_host_keys()
-        client.connect(vm_ip, 22, VM_user) #IP, port, username
+        client.connect(vm_ip, 22, SSH_USER) #IP, port, username
         stdin, stdout, stderr = client.exec_command("lxc list | grep RUNNING | wc -l") # Get number of running containers
         for line in stdout:
             containers = int(line.strip('\n'))
         # Shutdown VM if not in use
         if containers == 0:
-            conn.compute.stop_server(server)
+            openstack.compute.stop_server(server)
     else:
         pass
 
 
 def vm_start(server):
     if server["power_state"] == "off":
-        conn.compute.get_server(server["id"])
+        openstack.compute.get_server(server["id"])
         while vm.status == "SHUTOFF":
             sleep(3)
-            vm = conn.compute.get_server(server["id"])
+            vm = openstack.compute.get_server(server["id"])
         server["power_state"] = "on"
     else:
         pass
 
 
-conn = os_client_config.make_sdk()
-with open("chall_servers.json") as f:
-    chall_server = json.load(f)
-    for chall in chall_server:
-        for i in range(0,len(chall_server[chall])):
-            vm = conn.compute.get_server(chall_server[chall][i]["id"])
-            chall_server[chall][i]["IP"] = vm.addresses[CTF_network][IP_type]["addr"]
+def sync_vms():
+    with open(CHALL_SERVERS) as f:
+        chall_servers = json.load(f)
+
+    vm_state = {}
+
+    for chall, vm_uuids in chall_servers.items():
+        for vm_uuid in vm_uuids:
+            vm = openstack.compute.get_server(vm_uuid)
+
             if vm.status == "SHUTOFF":
-                chall_server[chall][i]["power_state"] = "off"
+                status = "off"
             elif vm.status == "ACTIVE":
-                chall_server[chall][i]["power_state"] = "on"
+                status = "on"
             else:
-                logging.critical('VM %s IN UNKNOWN STATE, PLEASE CHECK OPENSTACK', chall)
-    json.dump(chall_server, f)
+                logging.critical('VM %s IN UNKNOWN STATE, CHECK OPENSTACK',
+                                 vm_uuid)
+                status = "off"  # assume off
+
+            def get_addr(constraints):
+                try:
+                    return next(addrinfo["addr"]
+                                for addrinfo in vm.addresses[CTF_NETWORK]
+                                if constraints.issubset(addrinfo.items()))
+                except StopIteration:
+                    return None
+
+            addr = get_addr(ADDR_CONSTRAINTS)
+            extaddr = get_addr(EXTADDR_CONSTRAINTS)
+            vm_state[vm_uuid] = VMState(status, addr, extaddr)
+
+    return chall_servers, vm_state
 
 
-print("Challenge VMs IPs:\n")
-print(chall_server,"\n\n")
-main_loop(chall_server)
+if __name__ == '__main__':
+    main_loop(chall_server)
