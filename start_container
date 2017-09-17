@@ -7,11 +7,11 @@ IMAGE=chall
 # create the container if it doesn't exist
 if [[ ! -e /var/lib/lxd/containers/$CONTAINER ]]
   then
-    lxc init $IMAGE $CONTAINER &> /dev/null 
-    lxc config device add $CONTAINER eth0 nic nictype=macvlan name=eth0 parent=ens3 vlan=$1 &> /dev/null 
-    lxc start $CONTAINER &> /dev/null 
-    echo container $CONTAINER started
+    lxc init $IMAGE $CONTAINER 2> >(grep -Pv "(use: lxc| doesn't have any) network") > >(grep -Pv "^Creating $CONTAINER") || exit 1 
+    lxc config device add $CONTAINER eth0 nic nictype=macvlan name=eth0 parent=ens3 vlan=$1 > >(grep -Pv "^Device eth0 added to") || exit 1
+    lxc start $CONTAINER || exit 1
+    echo started:$CONTAINER
   else
-    echo container $CONTAINER already created and started
+    echo already_started:$CONTAINER
 fi
 exit 0

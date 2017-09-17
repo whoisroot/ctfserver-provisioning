@@ -7,9 +7,9 @@ IMAGE=chall
 # create the container if it doesn't exist
 if [[ -e /var/lib/lxd/containers/$CONTAINER ]]
   then
-    lxc delete $CONTAINER --force &> /dev/null
-    echo container $CONTAINER stoped and destroyed
+    lxc delete $CONTAINER --force || exit 1
+    echo stopped:$CONTAINER
   else
-    echo container $CONTAINER does not exist 
+    echo already_stopped:$CONTAINER
 fi
 exit 0
