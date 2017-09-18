@@ -298,7 +298,7 @@ def list_containers(vm_uuid, host):
     return None
 
 
-def ssh_exec(host, command, retries=10, timeout=4):
+def ssh_exec(host, command, retries=20, timeout=4):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -308,12 +308,12 @@ def ssh_exec(host, command, retries=10, timeout=4):
                            timeout=timeout,
                            banner_timeout=timeout,
                            auth_timeout=timeout)
-            stdin, stdout, stderr = client.exec_command(command)
-            output = stdout.read().decode('utf-8').strip()
-            errout = stderr.read().decode('utf-8').strip()
             break
         except:
             logging.exception('Got exception at ssh_exec')
+    stdin, stdout, stderr = client.exec_command(command)
+    output = stdout.read().decode('utf-8').strip()
+    errout = stderr.read().decode('utf-8').strip()
     if errout != '':
         logging.error("Received errors when running '%s' on host %s: %s",
                       command, host, errout)
@@ -466,7 +466,7 @@ def read_released_challs():
         return set(json.load(f))
 
 
-def wait_pending(pending, timeout=60, reraise=False):
+def wait_pending(pending, timeout=90, reraise=False):
     try:
         for future in as_completed(pending, timeout=60):
             result = future.result()
