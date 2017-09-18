@@ -78,3 +78,5 @@ exit 0;
 EOF
 
 chmod +x verify-cn
+
+echo "Run: sudo openvpn ctf.ovpn"
