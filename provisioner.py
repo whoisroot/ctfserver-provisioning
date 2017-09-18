@@ -397,7 +397,7 @@ def sync_containers(openstack_servers, vm_state):
             else:
                 container_state[vm_uuid] = set()
 
-    for func, args in wait_pending(pending):
+    for func, args in wait_pending(pending, reraise=True):
         uuid, containers = args
         container_state[uuid] = containers
 
@@ -453,13 +453,15 @@ def read_released_challs():
         return set(json.load(f))
 
 
-def wait_pending(pending, timeout=60):
+def wait_pending(pending, timeout=60, reraise=False):
     try:
         for future in as_completed(pending, timeout=60):
             result = future.result()
             if result is not None:
                 yield result
     except TimeoutError:
+        if reraise:
+            raise
         logging.exception("Timeout when waiting for threads to finish")
 
 
