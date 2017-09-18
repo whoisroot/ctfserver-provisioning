@@ -108,8 +108,8 @@ def handle_container_transition(openstack_servers, vm_state,
     vpn_addr, vpn_extaddr = get_vpn_addrs(openstack_servers, vm_state)
     vpn_vm_uuids = set(openstack_servers[VPN_ID])
 
-    logging.info('Current state: %r', container_state)
-    logging.info('Target state: %r', target_state)
+    logging.debug('Current state: %r. Target state: %r',
+                  container_state, target_state)
 
     # Handle starting VPN if needed
     for vm_uuid in vpn_vm_uuids:
