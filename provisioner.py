@@ -217,7 +217,7 @@ def start_vm(vm_uuid):
             vm = openstack.compute.get_server(vm_uuid)
             if vm.status == "ACTIVE":
                 break
-            if vm.status != "STARTING":
+            if vm.status != "POWERING-ON":
                 openstack.compute.start_server(vm_uuid)
             time.sleep(2)
         return ("start_vm", (vm_uuid, ))
