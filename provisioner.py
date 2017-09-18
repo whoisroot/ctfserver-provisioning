@@ -298,7 +298,7 @@ def list_containers(vm_uuid, host):
     return None
 
 
-def ssh_exec(host, command, retries=10, timeout=3):
+def ssh_exec(host, command, retries=15, timeout=4):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -466,7 +466,7 @@ def read_released_challs():
         return set(json.load(f))
 
 
-def wait_pending(pending, timeout=60, reraise=False):
+def wait_pending(pending, timeout=90, reraise=False):
     try:
         for future in as_completed(pending, timeout=60):
             result = future.result()
