@@ -198,20 +198,31 @@ def stop_idle_vms(vm_state, container_state):
 
 
 def stop_vm(vm_uuid):
-    openstack = os_client_config.make_sdk()
-    openstack.compute.stop_server(vm_uuid)
-    return ("stop_vm", (vm_uuid, ))
+    try:
+        openstack = os_client_config.make_sdk()
+        openstack.compute.stop_server(vm_uuid)
+        return ("stop_vm", (vm_uuid, ))
+    except:
+        logging.exception("Got exception on stop_vm(%r)",
+                          vm_uuid)
+    return None
 
 
 def start_vm(vm_uuid):
-    openstack = os_client_config.make_sdk()
-    openstack.compute.start_server(vm_uuid)
-    while True:
-        vm = openstack.compute.get_server(vm_uuid)
-        if vm.status == "ACTIVE":
-            break
-        time.sleep(2)
-    return ("start_vm", (vm_uuid, ))
+    try:
+        openstack = os_client_config.make_sdk()
+        while True:
+            vm = openstack.compute.get_server(vm_uuid)
+            if vm.status == "ACTIVE":
+                break
+            if vm.status != "STARTING":
+                openstack.compute.start_server(vm_uuid)
+            time.sleep(2)
+        return ("start_vm", (vm_uuid, ))
+    except:
+        logging.exception("Got exception on start_vm(%r)",
+                          vm_uuid)
+    return None
 
 
 def start_vpn(vm_uuid, host, extaddr, team_id):
@@ -231,11 +242,11 @@ def start_vpn(vm_uuid, host, extaddr, team_id):
         elif status == 'vpn_already_exists':
             logging.warn('VPN for team %d was already started' % team_id)
             return None
-        logging.error("Unexpected output from start_vpn(%r, %r, %d): %s",
-                      host, extaddr, team_id, '\n'.join(output))
+        logging.error("Unexpected output from start_vpn(%r, %r, %r, %d): %s",
+                      vm_uuid, host, extaddr, team_id, '\n'.join(output))
     except:
-        logging.exception("Got exception on start_vpn(%r, %r, %d)",
-                          host, extaddr, team_id)
+        logging.exception("Got exception on start_vpn(%r, %r, %r, %d)",
+                          vm_uuid, host, extaddr, team_id)
     return None
 
 
@@ -251,8 +262,8 @@ def start_container(vm_uuid, host, team_id):
                          container_name, host)
         return ("start_container", (vm_uuid, host, team_id))
     except:
-        logging.exception("Got exception on start_container(%r, %d)",
-                          host, team_id)
+        logging.exception("Got exception on start_container(%r, %r, %d)",
+                          vm_uuid, host, team_id)
     return None
 
 
@@ -268,8 +279,8 @@ def stop_container(vm_uuid, host, team_id):
                          container_name, host)
         return ("stop_container", (vm_uuid, host, team_id))
     except:
-        logging.exception("Got exception on stop_container(%r, %d)",
-                          host, team_id)
+        logging.exception("Got exception on stop_container(%r, %r, %d)",
+                          vm_uuid, host, team_id)
     return None
 
 
