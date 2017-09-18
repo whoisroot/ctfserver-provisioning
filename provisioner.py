@@ -199,6 +199,7 @@ def stop_idle_vms(vm_state, container_state):
 
 def stop_vm(vm_uuid):
     try:
+        logging.info("Stopping VM %s", vm_uuid)
         openstack = os_client_config.make_sdk()
         openstack.compute.stop_server(vm_uuid)
         return ("stop_vm", (vm_uuid, ))
@@ -210,6 +211,7 @@ def stop_vm(vm_uuid):
 
 def start_vm(vm_uuid):
     try:
+        logging.info("Starting VM %s", vm_uuid)
         openstack = os_client_config.make_sdk()
         while True:
             vm = openstack.compute.get_server(vm_uuid)
@@ -227,7 +229,7 @@ def start_vm(vm_uuid):
 
 def start_vpn(vm_uuid, host, extaddr, team_id):
     try:
-        logging.info('Starting VPN for team %d', team_id)
+        logging.info("Starting VPN for team %d", team_id)
         password = pwgen(pw_length=20, no_ambiguous=True)
         message = "Run: ./setup-vpn %s %d %s" % (shlex.quote(extaddr),
                                                  team_id,
@@ -252,7 +254,7 @@ def start_vpn(vm_uuid, host, extaddr, team_id):
 
 def start_container(vm_uuid, host, team_id):
     try:
-        logging.info('Starting container in host %r for team %d',
+        logging.info("Starting container in host %r for team %d",
                      host, team_id)
         command = "./start_container %d" % team_id
         status, container_name = ssh_exec(host, command).split(':')
@@ -269,7 +271,7 @@ def start_container(vm_uuid, host, team_id):
 
 def stop_container(vm_uuid, host, team_id):
     try:
-        logging.info('Stopping container in host %r for team %d',
+        logging.info("Stopping container in host %r for team %d",
                      host, team_id)
         command = "./stop_container %d" % team_id
         status, container_name = ssh_exec(host, command).split(':')
