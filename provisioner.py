@@ -458,8 +458,6 @@ def sync_vms():
 def get_vpn_addrs(openstack_servers, vm_state):
     vpn_uuid, = openstack_servers[VPN_ID]
     state = vm_state[vpn_uuid]
-    if state.status != "on":
-        logging.critical("THE VPN VM IS OFF, TURN IT ON")
     return state.addr, state.extaddr
 
 
