@@ -28,7 +28,7 @@ ADDR_CONSTRAINTS = {('version', 4),  # 4 for IPv4, 6 for IPv6
 # Constraints for external addresses given to users (e.g. VPN address)
 EXTADDR_CONSTRAINTS = {('version', 4),
                        ('OS-EXT-IPS:type', 'floating')}
-NIZKCTF_PATH = "" # Path to the NIZKCTF repository
+NIZKCTF_PATH = "/home/ubuntu/SCMPv8" # Path to the NIZKCTF repository
 MIN_SOLVES = 1 # Minimum number of solves required for team to be provisioned
 SSH_USER = "ubuntu" # User to authenticate and start containers in the challenge VMs
 SSH_PORT = 22 # SSH port to authenticate and start containers in the challenge VMs
@@ -37,9 +37,8 @@ MAX_PROVISIONED_ID = 4095 # maximum id for provisioned teams
 ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
 MAIN_LOOP_ITERATION_SLEEP = 60 # seconds to sleep between iterations
 # URL from which we will get the accepted-submissions.json file
-ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/pwn2winctf/"\
-    "test_submissions/73ba8c39d8f9eee530dae1c7c2a506690df28e80/"\
-    "accepted-submissions.json"
+ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/SCMP-ctf/"\
+    "SCMPv8submissions/master/accepted-submissions.json"
 
 OPENSTACK_SERVERS = "openstack_servers.json"
 RELEASED_CHALLS = "released_challs.json"
