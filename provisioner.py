@@ -330,7 +330,7 @@ def compute_target_state(openstack_servers, released_challs):
             containers[vm_uuid] = set()
 
     submissions = get_accepted_submissions()
-    for team in submissions['standings']:
+    for team in submissions.get('standings', []):
         team_name = team['team']
         solved_challs = set(team['taskStats'].keys())
         if len(solved_challs) >= MIN_SOLVES:
