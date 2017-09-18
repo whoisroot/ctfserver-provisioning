@@ -298,26 +298,27 @@ def list_containers(vm_uuid, host):
     return None
 
 
-def ssh_exec(host, command, retries=20, timeout=4):
+def ssh_exec(host, command, retries=10, timeout=2, sleep_interval=3):
+    client = paramiko.SSHClient()
+    client.load_system_host_keys()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     for i in range(retries):
         try:
-            client = paramiko.SSHClient()
-            client.load_system_host_keys()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             client.connect(host, SSH_PORT, SSH_USER,
                            timeout=timeout,
                            banner_timeout=timeout,
                            auth_timeout=timeout)
-            stdin, stdout, stderr = client.exec_command(command)
-            output = stdout.read().decode('utf-8').strip()
-            errout = stderr.read().decode('utf-8').strip()
-            if errout != '':
-                logging.error("Received errors when running '%s' on host %s: %s",
-                              command, host, errout)
-            client.close()
             break
         except:
             logging.exception('Got exception at ssh_exec')
+            time.sleep(sleep_interval)
+    stdin, stdout, stderr = client.exec_command(command)
+    output = stdout.read().decode('utf-8').strip()
+    errout = stderr.read().decode('utf-8').strip()
+    if errout != '':
+        logging.error("Received errors when running '%s' on host %s: %s",
+                      command, host, errout)
+    client.close()
     return output
 
 
