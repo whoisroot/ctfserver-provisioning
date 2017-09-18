@@ -126,23 +126,25 @@ def handle_container_transition(openstack_servers, vm_state,
     for vm_uuid, containers in target_state.items():
         if vm_uuid in vpn_vm_uuids:
             continue
-        if container not in container_state[vm_uuid]:
-            team_id = get_team_id_from_container_name(container)
-            pending.append(executor.submit(start_container,
-                                           vm_uuid,
-                                           vm_state[vm_uuid].addr,
-                                           team_id))
+        for container in containers:
+            if container not in container_state[vm_uuid]:
+                team_id = get_team_id_from_container_name(container)
+                pending.append(executor.submit(start_container,
+                                               vm_uuid,
+                                               vm_state[vm_uuid].addr,
+                                               team_id))
 
     # Stop challenge containers if not needed anymore
     for vm_uuid, containers in container_state.items():
         if vm_uuid in vpn_vm_uuids:
             continue
-        if container not in target_state[vm_uuid]:
-            team_id = get_team_id_from_container_name(container)
-            pending.append(executor.submit(stop_container,
-                                           vm_uuid,
-                                           vm_state[vm_uuid].addr,
-                                           team_id))
+        for container in containers:
+            if container not in target_state[vm_uuid]:
+                team_id = get_team_id_from_container_name(container)
+                pending.append(executor.submit(stop_container,
+                                               vm_uuid,
+                                               vm_state[vm_uuid].addr,
+                                               team_id))
 
     for func, args in wait_pending(pending):
         if func == "start_vpn":
@@ -176,7 +178,7 @@ def start_vms(vm_state, container_state, target_state):
 
     for func, args in wait_pending(pending):
         uuid, = args
-        vm_state[uuid].status = "on"
+        vm_state[uuid] = vm_state[uuid]._replace(status="on")
 
 
 def stop_idle_vms(vm_state, container_state):
@@ -190,7 +192,7 @@ def stop_idle_vms(vm_state, container_state):
 
     for func, args in wait_pending(pending):
         uuid, = args
-        vm_state[uuid].status = "off"
+        vm_state[uuid] = vm_state[uuid]._replace(status="off")
 
     return container_state
 
