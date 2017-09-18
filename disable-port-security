@@ -1,0 +1,10 @@
+#!/bin/bash -e
+if [[ $# != 1 ]]; then
+	echo "$0 server_name_or_uuid"
+	exit 1
+fi
+server="$1"
+port_id="$(openstack port list --server "${server}" --format=json | jq -r '.[0] | .ID')"
+[[ "${port_id}" != "" ]] || exit 1
+openstack server remove security group "${server}" default || true
+openstack port set "${port_id}" --disable-port-security
