@@ -152,6 +152,7 @@ def handle_container_transition(openstack_servers, vm_state,
             team_name = get_team_name(team_id)
             logging.info("Sending VPN credentials to team %r" % team_name)
             p = Popen([os.path.join(NIZKCTF_PATH, "ctf"), "add_news",
+                       "--pull",
                        "--msg", message,
                        "--to", team_name])
             p.wait()
