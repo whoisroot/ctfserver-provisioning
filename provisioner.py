@@ -285,7 +285,7 @@ def list_containers(vm_uuid, host):
     return None
 
 
-def ssh_exec(host, command, retries=5, timeout=2):
+def ssh_exec(host, command, retries=10, timeout=3):
     client = paramiko.SSHClient()
     client.load_system_host_keys()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
