@@ -36,10 +36,10 @@ Edit the `start_container` script to use the alias you set for your container im
 4. Paste them in `openstack_servers.json` using the following template:
 
         {
-            "_vpn": [<VPN_VM_id_here>],
-            "<challenge1_name_in_NIZKCTF_here>": [<instance1_id_here>],
-            "<challenge2_name_in_NIZKCTF_here>": [<instance2_id_here>],
-            "<multicontainer-chall_name_here>": [<instance3-1_id_here>, <instance3-2_id_here>]
+            "_vpn": ["<VPN_VM_uuid_here>"],
+            "<challenge1_name_in_NIZKCTF_here>": ["<instance1_uuid_here>"],
+            "<challenge2_name_in_NIZKCTF_here>": ["<instance2_uuid_here>"],
+            "<multicontainer-chall_name_here>": ["<instance3-1_uuid_here>", "<instance3-2_uuid_here>"]
         }
 
 	- Add the VPN instance to this file so that the provisioner can access it, just don't add it to `released_challs.json`, because it might get closed down by the provisioner's routines.
