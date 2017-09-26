@@ -20,7 +20,7 @@ The setup order is:
 * `ansible-playbook vpn_host.yml`
 * `ansible-playbook challenges.yml`
 
-After that run `./disable-port-security server_name_or_uuid` to enable outside connections through the firewall to the challenge containers.
+After that run `./disable-port-security server_name_or_uuid` to enable bridging the network to the challenge containers.
 
 2. Copy the challenge container image to the designated challenge Virtual Machine and import it with `lxd image import your_challenge.tar.gz --alias chall_name` or create a brand new container and configure it to your liking and publish it later with `lxc publish container-name --alias chall_name --force`. More tutorials on LXD can be found at [the original documentation](https://help.ubuntu.com/lts/serverguide/lxd.html). The only requirement of the provisioner is that the container must have an static IP in the same range as the internal network provided for the VPN. In the default configuration of the playbooks, its `10.133.64.1/20` and, for ul7r4_1337 purposes, we recommend container IPs to be in the `10.133.70.0/24` range `;)` .
 This can be done adding the following lines to `/etc/network/interfaces`:
