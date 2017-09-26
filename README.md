@@ -10,7 +10,7 @@ The provisioner needs a few python3 dependencies to run:
 
 They are listed in `pip-requirements.txt`, just run `sudo -H python3 -m pip3 install -r pip-requirements.txt` to install the needed versions.
 
-## Set up the environment
+## Setting up the environment
 
 Use the [Continuous Integration bot's](https://github.com/pwn2winctf/nizkctf-tutorial/blob/master/GitHub.md) SSH credentials to be able to access the other VMs in the server. To be able to use Openstack's environment you also need to authenticate using `source openstack.sh`, otherwise the `openstack` command options won't show.
 
