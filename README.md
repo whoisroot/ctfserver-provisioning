@@ -18,8 +18,8 @@ Use the [Continuous Integration bot's](https://github.com/pwn2winctf/nizkctf-tut
 
 2. Paste them in `openstack_servers.json` using the following template:
 	- `{
-		"<instance_name_here>": [<instance_id_here>]
-		"<instance2_name_here>": [<instance2_id_here>]
+		"<challenge1_name_in_NIZKCTF_here>": [<instance1_id_here>]
+		"<challenge2_name_in_NIZKCTF_here>": [<instance2_id_here>]
    	   }`
 	- Add the VPN instance to this file so that the provisioner can access it, just don't add it to `released_challs.json`, because it might get closed down by the provisioner's routines.
 
@@ -30,5 +30,6 @@ With these steps you are ready to run the provisioner, as it will be able to pro
 
 ## Running the Provisioner
 
+After completing the previous steps, just run the provisioner with `./provisioner.py` and it will do it's thing, if any error comes up, the output logs will show up.
 
-
+To add new challenges after the provisioner is already running, just edit the JSON files the same way as the previous steps and they will be added to the routines in the next loop.
