@@ -1,7 +1,7 @@
 # Setting up NIZKCTF's provisioner
 
 
-## Download the required dependencies
+## Installing the required dependencies
 
 The provisioner needs a few python3 dependencies to run:
 * pwgen
