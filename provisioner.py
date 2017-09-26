@@ -18,8 +18,8 @@ from pwgen import pwgen
 logging.basicConfig(level=logging.INFO)
 
 
-#
 # Configuration
+#################################################################
 #
 CTF_NETWORK = "ctf_net" # Name of the network on OpenStack used for the CTF
 # Constraints for the addresses to which the provisioner connects
@@ -37,8 +37,9 @@ MAX_PROVISIONED_ID = 4095 # maximum id for provisioned teams
 ITERATIONS_BETWEEN_SYNCS = 10 # number of main loop iterations between state syncs
 MAIN_LOOP_ITERATION_SLEEP = 60 # seconds to sleep between iterations
 # URL from which we will get the accepted-submissions.json file
-ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/SCMP-ctf/"\
-    "SCMPv8submissions/master/accepted-submissions.json"
+ACCEPTED_SUBMISSIONS_URL = "https://raw.githubusercontent.com/"\
+    "SCMP-ctf/SCMPv8submissions/master/"\ # Submissions repository for the CTF
+    "accepted-submissions.json"
 
 OPENSTACK_SERVERS = "openstack_servers.json"
 RELEASED_CHALLS = "released_challs.json"
@@ -46,7 +47,9 @@ TEAM_ID_DB = "team_id.db"
 VPN_ID = "_vpn"  # VPN server name in OPENSTACK_SERVERS json file
 
 CONTAINER_PREFIX = "team-"
-
+#
+#################################################################
+#
 
 VMState = namedtuple('VMState', ['status', 'addr', 'extaddr'])
 
