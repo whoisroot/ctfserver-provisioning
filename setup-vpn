@@ -24,7 +24,7 @@ ns-cert-type server
 auth-user-pass
 
 user nobody
-group nogroup
+group $(id -gn nobody)
 persist-tun
 persist-key
 
